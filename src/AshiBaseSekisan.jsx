@@ -682,13 +682,13 @@ export default function AshiBaseSekisan() {
           {user && pdfStatus.plan === "none" && (
             <div style={{ display: "flex", gap: 8, marginTop: 10, paddingTop: 10, borderTop: `1px dashed ${C.line}` }}>
               <button
-                onClick={() => startCheckout("monthly").catch(() => setMsg("決済ページを開けませんでした"))}
+                onClick={() => startCheckout("monthly").catch((e) => setMsg(`決済ページを開けませんでした: ${e.message}`))}
                 style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: `1px solid ${C.line}`, background: "#fff", color: C.ink, fontWeight: 700, fontSize: 12 }}
               >
                 月額500円で無制限
               </button>
               <button
-                onClick={() => startCheckout("annual").catch(() => setMsg("決済ページを開けませんでした"))}
+                onClick={() => startCheckout("annual").catch((e) => setMsg(`決済ページを開けませんでした: ${e.message}`))}
                 style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: `1px solid ${C.line}`, background: "#fff", color: C.ink, fontWeight: 700, fontSize: 12 }}
               >
                 年額5,000円で無制限
