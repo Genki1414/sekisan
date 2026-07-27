@@ -3,6 +3,7 @@ import { useSession } from "./lib/useSession";
 import { startLineLogin } from "./lib/lineAuth";
 import { fetchCompanySettings, saveCompanySettings } from "./lib/profile";
 import { consumePdfCredit, peekPdfStatus } from "./lib/pdfCredits";
+import { startCheckout } from "./lib/billing";
 
 /* 足場積算（戸建・くさび式）— 平面割り付け図 + 高さ断面図（コマ・手摺・寸法）+ 全資材 */
 
@@ -266,6 +267,18 @@ export default function AshiBaseSekisan() {
       try { setSettings(await fetchCompanySettings()); } catch (e) {}
       try { setPdfStatus(await peekPdfStatus()); } catch (e) {}
     })();
+  }, [user]);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const checkout = params.get("checkout");
+    if (!checkout) return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("checkout");
+    window.history.replaceState({}, "", url.toString());
+    if (checkout === "success") {
+      setMsg("ご契約ありがとうございます。反映まで少し時間がかかる場合があります。");
+      if (user) peekPdfStatus().then(setPdfStatus).catch(() => {});
+    }
   }, [user]);
   const [faces, setFaces] = useState({
     北: { len: "9000", noki: "700", shiki: "1000" }, 東: { len: "7000", noki: "700", shiki: "1200" },
@@ -666,6 +679,22 @@ export default function AshiBaseSekisan() {
             </span>
           </button>
           {msg ? <div style={{ fontSize: 11, color: C.red, marginTop: 6, textAlign: "center" }}>{msg}</div> : null}
+          {user && pdfStatus.plan === "none" && (
+            <div style={{ display: "flex", gap: 8, marginTop: 10, paddingTop: 10, borderTop: `1px dashed ${C.line}` }}>
+              <button
+                onClick={() => startCheckout("monthly").catch(() => setMsg("決済ページを開けませんでした"))}
+                style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: `1px solid ${C.line}`, background: "#fff", color: C.ink, fontWeight: 700, fontSize: 12 }}
+              >
+                月額500円で無制限
+              </button>
+              <button
+                onClick={() => startCheckout("annual").catch(() => setMsg("決済ページを開けませんでした"))}
+                style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: `1px solid ${C.line}`, background: "#fff", color: C.ink, fontWeight: 700, fontSize: 12 }}
+              >
+                年額5,000円で無制限
+              </button>
+            </div>
+          )}
         </Section>
 
         <button onClick={() => setMsg("AshiBase資材管理への接続は準備中です")} style={{ width: "100%", padding: "13px 0", borderRadius: 10, border: 0, background: C.ink, color: "#fff", fontWeight: 800, fontSize: 14 }}>
