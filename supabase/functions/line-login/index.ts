@@ -73,7 +73,9 @@ Deno.serve(async (req) => {
     }),
   });
   if (!tokenRes.ok) {
-    return jsonResponse({ error: "token_exchange_failed" }, 401, origin);
+    const errText = await tokenRes.text();
+    console.error("LINE token exchange failed", tokenRes.status, errText);
+    return jsonResponse({ error: "token_exchange_failed", detail: errText }, 401, origin);
   }
   const tokenData = await tokenRes.json();
 

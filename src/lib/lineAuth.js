@@ -61,7 +61,7 @@ export async function completeLineLoginIfNeeded() {
 
   const data = await res.json();
   if (!res.ok) {
-    throw new Error(`line_login_failed: ${data.error ?? res.status}`);
+    throw new Error(`line_login_failed: ${data.error ?? res.status}${data.detail ? " - " + data.detail : ""}`);
   }
 
   const { error: verifyError } = await supabase.auth.verifyOtp({
