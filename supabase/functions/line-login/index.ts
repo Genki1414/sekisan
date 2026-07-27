@@ -132,46 +132,22 @@ Deno.serve(async (req) => {
   );
 });
 
+// LINEのIDトークンはHS256(チャネルシークレット署名)のため、
+// 自前でJWT検証せずLINE公式のverifyエンドポイントに委譲する
 async function verifyLineIdToken(idToken: string) {
-  const [headerB64, payloadB64, signatureB64] = idToken.split(".");
-  if (!headerB64 || !payloadB64 || !signatureB64) return null;
+  const res = await fetch("https://api.line.me/oauth2/v2.1/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      id_token: idToken,
+      client_id: LINE_CHANNEL_ID,
+    }),
+  });
+  if (!res.ok) return null;
+  const payload = await res.json();
 
-  const jwksRes = await fetch("https://api.line.me/oauth2/v2.1/certs");
-  if (!jwksRes.ok) return null;
-  const jwks = await jwksRes.json();
-
-  const header = JSON.parse(base64UrlDecode(headerB64));
-  const jwk = jwks.keys.find((k: { kid: string }) => k.kid === header.kid);
-  if (!jwk) return null;
-
-  const key = await crypto.subtle.importKey(
-    "jwk",
-    jwk,
-    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-    false,
-    ["verify"],
-  );
-
-  const data = new TextEncoder().encode(`${headerB64}.${payloadB64}`);
-  const signature = base64UrlToBytes(signatureB64);
-  const valid = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, signature, data);
-  if (!valid) return null;
-
-  const payload = JSON.parse(base64UrlDecode(payloadB64));
   if (payload.iss !== "https://access.line.me") return null;
   if (payload.aud !== LINE_CHANNEL_ID) return null;
   if (typeof payload.exp !== "number" || payload.exp * 1000 < Date.now()) return null;
   return payload;
-}
-
-function base64UrlDecode(input: string) {
-  const base64 = input.replace(/-/g, "+").replace(/_/g, "/");
-  return atob(base64);
-}
-
-function base64UrlToBytes(input: string) {
-  const raw = base64UrlDecode(input);
-  const bytes = new Uint8Array(raw.length);
-  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
-  return bytes;
 }
