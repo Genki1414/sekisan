@@ -1,5 +1,8 @@
 import React, { useMemo, useState, useEffect } from "react";
-import { storage } from "./storage.js";
+import { useSession } from "./lib/useSession";
+import { startLineLogin } from "./lib/lineAuth";
+import { fetchCompanySettings, saveCompanySettings } from "./lib/profile";
+import { consumePdfCredit, peekPdfStatus } from "./lib/pdfCredits";
 
 /* 足場積算（戸建・くさび式）— 平面割り付け図 + 高さ断面図（コマ・手摺・寸法）+ 全資材 */
 
@@ -240,6 +243,8 @@ const FACE_KEYS = ["北", "東", "南", "西"];
 const PERFACE_ROWS = ["踏板", "手摺(各段)", "根がらみ", "落下手摺", "大ブラ", "ブレス", "メッシュ"];
 
 export default function AshiBaseSekisan() {
+  const session = useSession();
+  const user = session?.user ?? null;
   const [type, setType] = useState("A");
   const [nokiten, setNokiten] = useState("5400");
   const [kiso, setKiso] = useState("400");
@@ -251,14 +256,17 @@ export default function AshiBaseSekisan() {
   const [items, setItems] = useState([]);
   const [settings, setSettings] = useState({ jisha: "", jusho: "", tel: "", tanto: "" });
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [credits, setCredits] = useState(3);
+  const [pdfStatus, setPdfStatus] = useState({ remainingFree: 3, plan: "none" });
   const [pdfView, setPdfView] = useState(false);
   const [msg, setMsg] = useState("");
   const [discount, setDiscount] = useState({ amount: "", unit: 0 });
-  useEffect(() => { (async () => {
-    try { const r = await storage.get("qpdf_credits"); if (r && r.value != null) setCredits(JSON.parse(r.value)); else await storage.set("qpdf_credits", JSON.stringify(3)); } catch (e) {}
-    try { const s2 = await storage.get("qpdf_settings"); if (s2 && s2.value) setSettings(JSON.parse(s2.value)); } catch (e) {}
-  })(); }, []);
+  useEffect(() => {
+    if (!user) { setSettings({ jisha: "", jusho: "", tel: "", tanto: "" }); return; }
+    (async () => {
+      try { setSettings(await fetchCompanySettings()); } catch (e) {}
+      try { setPdfStatus(await peekPdfStatus()); } catch (e) {}
+    })();
+  }, [user]);
   const [faces, setFaces] = useState({
     北: { len: "9000", noki: "700", shiki: "1000" }, 東: { len: "7000", noki: "700", shiki: "1200" },
     南: { len: "9000", noki: "500", shiki: "900" }, 西: { len: "7000", noki: "300", shiki: "870" },
@@ -410,16 +418,30 @@ export default function AshiBaseSekisan() {
   const zei = sougaku - zeinuki;
   const nebikiTotal = Math.max(0, grandTotal - zeinuki);
   const today = new Date().toLocaleDateString("ja-JP");
-  const saveSettings = async (ns) => { setSettings(ns); try { await storage.set("qpdf_settings", JSON.stringify(ns)); } catch (e) {} };
+  const saveSettings = async (ns) => {
+    setSettings(ns);
+    if (!user) { setMsg("設定の保存にはLINEログインが必要です"); return; }
+    try { await saveCompanySettings(ns); } catch (e) { setMsg("設定の保存に失敗しました"); }
+  };
   const addItem = () => setItems([...items, { name: "", qty: "", unit: "", price: "" }]);
   const setItem = (i, k, v) => setItems(items.map((it, j) => (j === i ? { ...it, [k]: v } : it)));
   const delItem = (i) => setItems(items.filter((_, j) => j !== i));
   const makeQuote = async () => {
     if (!tankaN) { setMsg("足場の単価を入力してください"); return; }
-    if (credits <= 0) { setMsg("無料は3回まで。追加クレジットはAshiBaseで購入（近日公開）"); return; }
-    setMsg(""); const nc = credits - 1; setCredits(nc);
-    try { await storage.set("qpdf_credits", JSON.stringify(nc)); } catch (e) {}
-    setPdfView(true);
+    if (!user) { setMsg("見積書PDFの作成にはLINEログインが必要です"); startLineLogin(); return; }
+    try {
+      const result = await consumePdfCredit();
+      if (!result.allowed) {
+        setMsg("無料は毎月3回まで。追加のご利用は有料プランで（近日公開）");
+        setPdfStatus({ remainingFree: 0, plan: result.plan });
+        return;
+      }
+      setMsg("");
+      setPdfStatus({ remainingFree: result.plan === "none" ? result.remaining_free : null, plan: result.plan });
+      setPdfView(true);
+    } catch (e) {
+      setMsg("見積書の作成でエラーが発生しました");
+    }
   };
   const buildQuoteImage = () => new Promise((resolve) => {
     const sc = 2, W = 720, H = 1040, cv = document.createElement("canvas");
@@ -592,7 +614,7 @@ export default function AshiBaseSekisan() {
         <Section title="見積書（客先提出用）">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
             <span style={{ fontSize: 11, color: C.sub }}>自社情報：{settings.jisha || "未設定"}</span>
-            <button onClick={() => setSettingsOpen(true)} style={{ fontSize: 12, color: C.ink, background: C.chip, border: `1px solid ${C.line}`, borderRadius: 8, padding: "5px 10px", fontWeight: 700 }}>⚙ 設定</button>
+            <button onClick={() => (user ? setSettingsOpen(true) : startLineLogin())} style={{ fontSize: 12, color: C.ink, background: C.chip, border: `1px solid ${C.line}`, borderRadius: 8, padding: "5px 10px", fontWeight: 700 }}>⚙ 設定{user ? "" : "（要ログイン）"}</button>
           </div>
           <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
             <TextField label="宛先（お客様）" val={quote.atesaki} set={(v) => setQuote({ ...quote, atesaki: v })} ph="〇〇様" />
@@ -634,7 +656,14 @@ export default function AshiBaseSekisan() {
             </div>
           </div>
           <button onClick={makeQuote} style={{ width: "100%", marginTop: 6, padding: "12px 0", borderRadius: 10, border: 0, background: C.amber, color: C.amberInk, fontWeight: 800, fontSize: 14 }}>
-            見積書を作成 <span style={{ fontWeight: 400, fontSize: 11 }}>（無料 残り{credits}回）</span>
+            見積書を作成{" "}
+            <span style={{ fontWeight: 400, fontSize: 11 }}>
+              {!user
+                ? "（要LINEログイン）"
+                : pdfStatus.plan !== "none"
+                ? "（ご契約プラン・無制限）"
+                : `（無料 今月残り${pdfStatus.remainingFree}回）`}
+            </span>
           </button>
           {msg ? <div style={{ fontSize: 11, color: C.red, marginTop: 6, textAlign: "center" }}>{msg}</div> : null}
         </Section>

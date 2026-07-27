@@ -1,39 +1,18 @@
 import { useEffect, useState } from "react";
-import { supabase } from "./lib/supabaseClient";
+import { useSession } from "./lib/useSession";
 import { startLineLogin, completeLineLoginIfNeeded, signOut } from "./lib/lineAuth";
 
 export default function AuthBar() {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const session = useSession();
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    let mounted = true;
-
-    (async () => {
-      try {
-        await completeLineLoginIfNeeded();
-      } catch (e) {
-        if (mounted) setError(e.message);
-      }
-      const { data } = await supabase.auth.getSession();
-      if (mounted) {
-        setUser(data.session?.user ?? null);
-        setLoading(false);
-      }
-    })();
-
-    const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
-
-    return () => {
-      mounted = false;
-      subscription.subscription.unsubscribe();
-    };
+    completeLineLoginIfNeeded().catch((e) => setError(e.message));
   }, []);
 
-  if (loading) return null;
+  if (session === undefined) return null;
+
+  const user = session?.user ?? null;
 
   return (
     <div
