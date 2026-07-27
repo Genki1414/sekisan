@@ -25,6 +25,12 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_LINE_CHANNEL_ID: ${{ secrets.VITE_LINE_CHANNEL_ID }}
+          VITE_LINE_REDIRECT_URI: ${{ secrets.VITE_LINE_REDIRECT_URI }}
+          VITE_LINE_LOGIN_FUNCTION_URL: ${{ secrets.VITE_LINE_LOGIN_FUNCTION_URL }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
