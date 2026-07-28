@@ -45,6 +45,20 @@ function jsonResponse(body: unknown, status: number, origin: string) {
   });
 }
 
+// ゲートウェイ側で署名検証済みのJWTなので、ここでは中身をデコードするだけでよい
+// (supabaseAdmin.auth.getUser()相当のネットワーク往復を省いて決済導線を高速化する)
+function decodeUserFromJwt(jwt: string): { id: string; email?: string } | null {
+  try {
+    const [, payloadB64] = jwt.split(".");
+    const payload = JSON.parse(atob(payloadB64.replace(/-/g, "+").replace(/_/g, "/")));
+    if (!payload.sub) return null;
+    if (typeof payload.exp === "number" && payload.exp * 1000 < Date.now()) return null;
+    return { id: payload.sub, email: payload.email };
+  } catch {
+    return null;
+  }
+}
+
 Deno.serve(async (req) => {
   const origin = req.headers.get("origin") ?? "";
 
@@ -57,11 +71,10 @@ Deno.serve(async (req) => {
 
   const authHeader = req.headers.get("authorization") ?? "";
   const jwt = authHeader.replace(/^Bearer\s+/i, "");
-  const { data: userData, error: userError } = await supabaseAdmin.auth.getUser(jwt);
-  if (userError || !userData?.user) {
+  const user = decodeUserFromJwt(jwt);
+  if (!user) {
     return jsonResponse({ error: "not_authenticated" }, 401, origin);
   }
-  const user = userData.user;
 
   let plan: string | undefined;
   try {
