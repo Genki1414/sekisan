@@ -121,11 +121,15 @@ function HeightDiagram({ kiso, nokiten, noki, roof, jack, type, standoff, lowest
   const wallX = 150;
   const eaveTip = wallX + Math.max(noki, 1) * hsc;
   const scafX = wallX + Math.max(standoff || 200, 200) * hsc;
+  const innerX = Math.max(wallX + 20, scafX - 34);
   // 最上段踏板＝軒天高−階高を基準に、そこから階高刻みで下へ配置する（軒天から逆算）
   const platforms = []; for (let h = nokiten - layer; h > 0; h -= layer) platforms.push(kiso + h);
   platforms.sort((a, b) => a - b); // 下から1段目・2段目…と数えられるよう昇順に
   const komaMarks = []; for (let h = lowestKoma; h <= total + 1; h += koma) komaMarks.push(h);
   const railMarks = []; platforms.forEach((p) => { if (rails >= 2) railMarks.push(p + koma); railMarks.push(p + 2 * koma); });
+  // 内柱＝最上段踏板までの短い構成（手摺・落下手摺分は立てない）
+  const innerTopAbs = kiso + Math.max(0, nokiten - layer);
+  const innerKomaMarks = []; for (let h = lowestKoma; h <= innerTopAbs + 1; h += koma) innerKomaMarks.push(h);
   return (
     <svg viewBox={`0 0 ${W} ${Hh}`} width="100%" style={{ background: C.sky, borderRadius: 8 }}>
       <rect x="0" y={ground} width={W} height={Hh - ground} fill={C.soil} />
@@ -141,21 +145,26 @@ function HeightDiagram({ kiso, nokiten, noki, roof, jack, type, standoff, lowest
       <line x1={wallX} y1={y(kiso + nokiten)} x2={eaveTip} y2={y(kiso + nokiten)} stroke="#7a6b55" strokeWidth="3" />
       <polygon points={`${wallX - 6},${y(kiso + nokiten)} ${(wallX + eaveTip) / 2},${y(kiso + nokiten) - 24} ${eaveTip + 2},${y(kiso + nokiten)}`} fill="#a08b6a" opacity="0.45" />
       <DimH x1={wallX} x2={eaveTip} y={y(kiso + nokiten) - 26} text={`軒出 ${noki}`} />
-      {hane && <text x={wallX} y={y(kiso + nokiten) - 40} fontSize="8" fontWeight="700" fill={C.red} fontFamily={mono}>ハネ出し</text>}
+      {/* 内柱：最上段踏板までの短い構成 */}
+      <line x1={innerX} y1={ground - jack * sc} x2={innerX} y2={y(innerTopAbs)} stroke={C.steel} strokeWidth="2" />
+      {innerKomaMarks.map((h, i) => (<line key={`ik${i}`} x1={innerX - 4} y1={y(h)} x2={innerX} y2={y(h)} stroke={C.steel} strokeWidth="1" />))}
+      <text x={innerX} y={y(innerTopAbs) - 5} fontSize="7.5" fill={C.steel} textAnchor="middle" fontFamily={mono}>内柱</text>
       <rect x={scafX - 3} y={ground - jack * sc} width="6" height={jack * sc} fill={C.steel} />
       <text x={scafX + 8} y={ground - 3} fontSize="8" fill={C.steel} fontFamily={mono}>ｼﾞｬｯｷ{jack}</text>
       <line x1={scafX} y1={ground - jack * sc} x2={scafX} y2={y(total)} stroke={C.ink} strokeWidth="2.5" />
+      <text x={scafX} y={y(total) - 20} fontSize="7.5" fill={C.ink} textAnchor="middle" fontFamily={mono}>外柱</text>
+      {hane && <text x={scafX + 16} y={y(kiso + nokiten) + 3} fontSize="8" fontWeight="700" fill={C.red} textAnchor="start" fontFamily={mono}>ハネ出し</text>}
       {komaMarks.map((h, i) => (<line key={`k${i}`} x1={scafX - 4} y1={y(h)} x2={scafX} y2={y(h)} stroke={C.ink} strokeWidth="1.2" />))}
       {railMarks.map((h, i) => (<circle key={`r${i}`} cx={scafX + 4} cy={y(h)} r="3.4" fill="#F4C21B" stroke="#9a7b12" strokeWidth="0.6" />))}
       {platforms.map((h, i) => (
         <g key={`p${i}`}>
           <line x1={scafX - 16} y1={y(h)} x2={scafX} y2={y(h)} stroke={C.deck} strokeWidth="4" />
-          <text x={scafX - 20} y={y(h) + 3} fontSize="7.5" fill={C.sub} textAnchor="end" fontFamily={mono}>{i + 1}段目</text>
+          <text x={scafX + 16} y={y(h) + 3} fontSize="7.5" fill={C.sub} textAnchor="start" fontFamily={mono}>{i + 1}段目</text>
         </g>
       ))}
       {roof && <><circle cx={scafX + 4} cy={y(total)} r="3.4" fill="#F4C21B" stroke="#9a7b12" strokeWidth="0.6" />
         <circle cx={scafX + 4} cy={y(kiso + nokiten + 450)} r="3.4" fill="#F4C21B" stroke="#9a7b12" strokeWidth="0.6" />
-        <text x={scafX + 10} y={y(total) + 3} fontSize="8" fill={C.sub} fontFamily={mono}>落下手摺</text></>}
+        <text x={scafX + 16} y={y(total) + 3} fontSize="8" fill={C.sub} fontFamily={mono}>落下手摺</text></>}
       <DimV x={wallX - 50} y1={ground} y2={y(kiso)} text={`基礎 ${kiso}`} />
       <DimV x={wallX - 50} y1={y(kiso)} y2={y(kiso + nokiten)} text={`軒天 ${nokiten}`} />
       <DimH x1={wallX} x2={scafX} y={ground - 12} text={`離れ ${standoff}`} />
@@ -278,6 +287,7 @@ export default function AshiBaseSekisan() {
   const [rails, setRails] = useState(1);
   const [stairs, setStairs] = useState(true);
   const [faceOpen, setFaceOpen] = useState(false);
+  const [heightDir, setHeightDir] = useState("北");
   const [quote, setQuote] = useState({ atesaki: "", genba: "", tanka: "" });
   const [items, setItems] = useState([]);
   const [settings, setSettings] = useState({ jisha: "", jusho: "", tel: "", tanto: "" });
@@ -590,7 +600,23 @@ export default function AshiBaseSekisan() {
         </Section>
 
         <ResultCard title="高さ図解（断面）" hero>
-          <HeightDiagram kiso={parseInt(kiso) || 0} nokiten={parseInt(nokiten) || 0} noki={parseInt(faces.北.noki) || 0} roof={roof} jack={H.jack} type={type} standoff={R.tsuke.北} lowestKoma={H.lowestKoma} rails={rails} hane={R.faceRows.find((f) => f.name === "北")?.f.hane} />
+          <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+            {FACE_KEYS.map((k) => (
+              <button
+                key={k}
+                onClick={() => setHeightDir(k)}
+                style={{
+                  flex: 1, padding: "6px 0", borderRadius: 8, fontSize: 12, fontWeight: 700,
+                  border: `1px solid ${heightDir === k ? C.amber : C.line}`,
+                  background: heightDir === k ? C.amber : "#fff",
+                  color: heightDir === k ? C.amberInk : (R.built[k] ? C.sub : "#b4bac2"),
+                }}
+              >
+                {k}面
+              </button>
+            ))}
+          </div>
+          <HeightDiagram kiso={parseInt(kiso) || 0} nokiten={parseInt(nokiten) || 0} noki={parseInt(faces[heightDir].noki) || 0} roof={roof} jack={H.jack} type={type} standoff={R.tsuke[heightDir]} lowestKoma={H.lowestKoma} rails={rails} hane={R.faceRows.find((f) => f.name === heightDir)?.f.hane} />
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 8, fontSize: 11, color: C.sub }}>
             <span>水切りつら <b style={{ fontFamily: mono, color: C.ink }}>{H.offset >= 0 ? "+" : ""}{H.offset}</b></span>
             <span>段数 <b style={{ fontFamily: mono, color: C.ink }}>{H.danCount}</b></span>
