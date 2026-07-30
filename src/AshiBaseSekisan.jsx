@@ -1,9 +1,11 @@
 import React, { useMemo, useState, useEffect } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { useSession } from "./lib/useSession";
 import { startLineLogin } from "./lib/lineAuth";
 import { fetchCompanySettings, saveCompanySettings } from "./lib/profile";
 import { consumePdfCredit, peekPdfStatus } from "./lib/pdfCredits";
 import { startCheckout, openBillingPortal } from "./lib/billing";
+import { listProjects, saveProject } from "./lib/projects";
 
 /* 足場積算（戸建・くさび式）— 平面割り付け図 + 高さ断面図（コマ・手摺・寸法）+ 全資材 */
 
@@ -290,6 +292,9 @@ export default function AshiBaseSekisan() {
   const [stairs, setStairs] = useState(true);
   const [faceOpen, setFaceOpen] = useState(false);
   const [matOpen, setMatOpen] = useState(true);
+  const [savedOpen, setSavedOpen] = useState(false);
+  const [savedProjects, setSavedProjects] = useState([]);
+  const [saveMsg, setSaveMsg] = useState("");
   const [heightDir, setHeightDir] = useState("北");
   const [quote, setQuote] = useState({ atesaki: "", genba: "", tanka: "" });
   const [items, setItems] = useState([]);
@@ -300,10 +305,11 @@ export default function AshiBaseSekisan() {
   const [msg, setMsg] = useState("");
   const [discount, setDiscount] = useState({ amount: "", unit: 0 });
   useEffect(() => {
-    if (!user) { setSettings({ jisha: "", jusho: "", tel: "", tanto: "" }); return; }
+    if (!user) { setSettings({ jisha: "", jusho: "", tel: "", tanto: "" }); setSavedProjects([]); return; }
     (async () => {
       try { setSettings(await fetchCompanySettings()); } catch (e) {}
       try { setPdfStatus(await peekPdfStatus()); } catch (e) {}
+      try { setSavedProjects(await listProjects()); } catch (e) {}
     })();
   }, [user]);
   useEffect(() => {
@@ -475,6 +481,31 @@ export default function AshiBaseSekisan() {
     if (!user) { setMsg("設定の保存にはLINEログインが必要です"); return; }
     try { await saveCompanySettings(ns); } catch (e) { setMsg("設定の保存に失敗しました"); }
   };
+  const handleSaveProject = async () => {
+    if (!user) { setMsg("保存にはLINEログインが必要です"); startLineLogin(); return; }
+    try {
+      await saveProject({
+        clientName: quote.atesaki,
+        siteName: quote.genba,
+        input: { type, nokiten, kiso, roof, rails, stairs, faces },
+      });
+      setSavedProjects(await listProjects());
+      setMsg("保存しました");
+    } catch (e) {
+      setMsg("保存に失敗しました");
+    }
+  };
+  const handleLoadProject = (p) => {
+    const inp = p.input || {};
+    if (inp.type) setType(inp.type);
+    if (inp.nokiten != null) setNokiten(inp.nokiten);
+    if (inp.kiso != null) setKiso(inp.kiso);
+    if (inp.roof != null) setRoof(inp.roof);
+    if (inp.rails != null) setRails(inp.rails);
+    if (inp.stairs != null) setStairs(inp.stairs);
+    if (inp.faces) setFaces(inp.faces);
+    setMsg(`「${p.client_name || "元請未設定"} / ${p.site_name || "現場未設定"}」を読み込みました`);
+  };
   const addItem = () => setItems([...items, { name: "", qty: "", unit: "", price: "" }]);
   const setItem = (i, k, v) => setItems(items.map((it, j) => (j === i ? { ...it, [k]: v } : it)));
   const delItem = (i) => setItems(items.filter((_, j) => j !== i));
@@ -542,6 +573,101 @@ export default function AshiBaseSekisan() {
     } catch (e) {}
     await downloadQuote();
     setMsg("画像を保存しました。LINEではこの画像を添付して送ってください");
+  };
+
+  const buildDiagramsImage = () => new Promise((resolve) => {
+    const svgToImage = (svgString) => new Promise((res) => {
+      const img = new Image();
+      img.onload = () => res(img);
+      img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgString);
+    });
+
+    (async () => {
+      const heightSvg = renderToStaticMarkup(
+        <HeightDiagram
+          kiso={parseInt(kiso) || 0} nokiten={parseInt(nokiten) || 0}
+          noki={parseInt(faces[heightDir].noki) || 0} roof={roof} jack={H.jack} type={type}
+          standoff={R.tsuke[heightDir]} lowestKoma={H.lowestKoma} rails={rails}
+          hane={R.faceRows.find((f) => f.name === heightDir)?.f.hane}
+        />
+      );
+      const planSvg = renderToStaticMarkup(
+        <PlanDiagram bw={R.ewLen} bh={R.nsLen} tsuke={R.tsuke} spansEW={R.scEW} spansNS={R.scNS} built={R.built} hane={R.hane} />
+      );
+      const [heightImg, planImg] = await Promise.all([svgToImage(heightSvg), svgToImage(planSvg)]);
+
+      const sc = 2, W = 720, headerH = 90, diagW = 344, diagH1 = 344, diagH2 = 320;
+      const matLines = grps.flatMap((g) => [
+        { header: g },
+        ...R.materials.filter((m) => m.grp === g).map((m) => ({ name: m.name, qty: m.qty })),
+      ]);
+      const matRowH = 20, matTop = 40;
+      const matH = matTop + matLines.length * matRowH + 20;
+      const totalH = headerH + diagH1 + 16 + diagH2 + 24 + matH;
+
+      const cv = document.createElement("canvas");
+      cv.width = W * sc; cv.height = totalH * sc;
+      const x = cv.getContext("2d"); x.scale(sc, sc);
+      x.fillStyle = "#fff"; x.fillRect(0, 0, W, totalH);
+
+      x.textAlign = "left"; x.fillStyle = "#16191D"; x.font = "bold 20px sans-serif";
+      x.fillText(`${quote.atesaki || "元請未設定"} / ${quote.genba || "現場未設定"}`, 24, 32);
+      x.font = "12px sans-serif"; x.fillStyle = "#5B6470";
+      x.fillText(new Date().toLocaleDateString("ja-JP"), 24, 52);
+      x.fillText(`延べ面積 ${R.nobeArea}㎡（${type}タイプ・${heightDir}面断面）`, 24, 70);
+
+      let y = headerH;
+      x.drawImage(heightImg, (W - diagW) / 2, y, diagW, diagH1);
+      y += diagH1 + 16;
+      x.drawImage(planImg, (W - diagW) / 2, y, diagW, diagH2);
+      y += diagH2 + 24;
+
+      x.font = "bold 13px sans-serif"; x.fillStyle = "#16191D";
+      x.fillText("資材リスト（概算・要検証）", 24, y);
+      y += matTop - 20;
+      matLines.forEach((l) => {
+        y += matRowH;
+        if (l.header) {
+          x.font = "bold 11px sans-serif"; x.fillStyle = "#5B6470"; x.textAlign = "left";
+          x.fillText(l.header, 24, y);
+        } else {
+          x.font = "12px sans-serif"; x.fillStyle = "#16191D";
+          x.textAlign = "left"; x.fillText(l.name, 40, y);
+          x.textAlign = "right"; x.fillText(String(l.qty), W - 24, y);
+        }
+      });
+
+      cv.toBlob((b) => resolve(b), "image/png");
+    })();
+  });
+
+  const downloadDiagrams = async () => {
+    const b = await buildDiagramsImage(); const url = URL.createObjectURL(b);
+    const a = document.createElement("a"); a.href = url; a.download = `積算_${quote.genba || "現場"}.png`;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 3000);
+  };
+  const shareDiagrams = async () => {
+    try {
+      const b = await buildDiagramsImage(); const f = new File([b], "積算.png", { type: "image/png" });
+      if (navigator.canShare && navigator.canShare({ files: [f] })) { await navigator.share({ files: [f], title: "積算" }); return; }
+    } catch (e) {}
+    await downloadDiagrams();
+    setMsg("画像を保存しました。LINEではこの画像を添付して送ってください");
+  };
+  const handleShareDiagrams = async () => {
+    if (!user) { setMsg("共有にはLINEログインが必要です"); startLineLogin(); return; }
+    try {
+      const result = await consumePdfCredit();
+      if (!result.allowed) {
+        setMsg("無料は毎月3回まで（見積書PDFと共通の回数です）。追加のご利用は有料プランで");
+        setPdfStatus({ remainingFree: 0, plan: result.plan });
+        return;
+      }
+      setPdfStatus({ remainingFree: result.plan === "none" ? result.remaining_free : null, plan: result.plan });
+      await shareDiagrams();
+    } catch (e) {
+      setMsg("共有画像の作成でエラーが発生しました");
+    }
   };
 
   return (
@@ -698,6 +824,51 @@ export default function AshiBaseSekisan() {
             </div>
           )}
         </div>
+
+        <Section title="断面・平面・資材リストの保存 / 共有">
+          <div style={{ fontSize: 11, color: C.sub, marginBottom: 8 }}>
+            保存・共有は下の「見積書」欄の宛先（お客様）＝元請名、現場名として記録されます。
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={handleSaveProject}
+              style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: 0, background: C.ink, color: "#fff", fontWeight: 700, fontSize: 13 }}
+            >
+              {user ? "この内容を保存" : "保存（要LINEログイン）"}
+            </button>
+            <button
+              onClick={handleShareDiagrams}
+              style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: `1px solid ${C.line}`, background: "#fff", color: C.ink, fontWeight: 700, fontSize: 13 }}
+            >
+              画像で共有{" "}
+              <span style={{ fontWeight: 400, fontSize: 10 }}>
+                {!user ? "（要ログイン）" : pdfStatus.plan !== "none" ? "（無制限）" : `（残り${pdfStatus.remainingFree}回）`}
+              </span>
+            </button>
+          </div>
+          {savedProjects.length > 0 && (
+            <div style={{ marginTop: 10, borderTop: `1px solid ${C.line}`, paddingTop: 8 }}>
+              <button onClick={() => setSavedOpen(!savedOpen)} style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", background: "transparent", border: 0, padding: 0 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: C.ink }}>保存済み（{savedProjects.length}件）</span>
+                <span style={{ fontFamily: mono, color: C.sub, fontSize: 12 }}>{savedOpen ? "▲ 閉じる" : "▼ 展開"}</span>
+              </button>
+              {savedOpen && (
+                <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6, maxHeight: 240, overflowY: "auto" }}>
+                  {savedProjects.map((p) => (
+                    <button
+                      key={p.id}
+                      onClick={() => handleLoadProject(p)}
+                      style={{ textAlign: "left", padding: "8px 10px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff" }}
+                    >
+                      <div style={{ fontSize: 12, fontWeight: 700, color: C.ink }}>{p.client_name || "元請未設定"} / {p.site_name || "現場未設定"}</div>
+                      <div style={{ fontSize: 10, color: C.sub }}>{new Date(p.created_at).toLocaleString("ja-JP")}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </Section>
 
         <Section title="見積書（客先提出用）">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
