@@ -601,91 +601,131 @@ export default function AshiBaseSekisan() {
     setMsg("画像を保存しました。LINEではこの画像を添付して送ってください");
   };
 
-  const buildDiagramsImage = () => new Promise((resolve, reject) => {
-    // data URI経由で読み込む場合、width="100%"のままだと基準となるコンテナが無く
-    // 読み込みに失敗する(=Imageのonloadが発火せず無限に待ち続ける)ことがあるため、
-    // 明示的なピクセルサイズに置き換える。最終的なサイズはdrawImageで指定するので
-    // ここでの値はSVGとして読み込めさえすれば厳密でなくてよい。
-    const withExplicitSize = (svgString) => svgString.replace(/width="100%"/, 'width="600" height="600"');
-    const svgToImage = (svgString) => new Promise((res, rej) => {
-      const img = new Image();
-      img.onload = () => res(img);
-      img.onerror = () => rej(new Error("svg_image_load_failed"));
-      img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(withExplicitSize(svgString));
-    });
-
-    (async () => {
-      try {
-      const heightSvg = renderToStaticMarkup(
-        <HeightDiagram
-          kiso={parseInt(kiso) || 0} nokiten={parseInt(nokiten) || 0}
-          noki={parseInt(faces[heightDir].noki) || 0} roof={roof} jack={H.jack} type={type}
-          standoff={R.tsuke[heightDir]} lowestKoma={H.lowestKoma} rails={rails}
-          hane={R.faceRows.find((f) => f.name === heightDir)?.f.hane}
-        />
-      );
-      const planSvg = renderToStaticMarkup(
-        <PlanDiagram bw={R.ewLen} bh={R.nsLen} tsuke={R.tsuke} spansEW={R.scEW} spansNS={R.scNS} built={R.built} hane={R.hane} />
-      );
-      const [heightImg, planImg] = await Promise.all([svgToImage(heightSvg), svgToImage(planSvg)]);
-
-      const sc = 2, W = 720, headerH = 90, diagW = 344, diagH1 = 344, diagH2 = 320;
-      const matLines = grps.flatMap((g) => [
-        { header: g },
-        ...R.materials.filter((m) => m.grp === g).map((m) => ({ name: m.name, qty: m.qty })),
-      ]);
-      const matRowH = 20, matTop = 40;
-      const matH = matTop + matLines.length * matRowH + 20;
-      const totalH = headerH + diagH1 + 16 + diagH2 + 24 + matH;
-
-      const cv = document.createElement("canvas");
-      cv.width = W * sc; cv.height = totalH * sc;
-      const x = cv.getContext("2d"); x.scale(sc, sc);
-      x.fillStyle = "#fff"; x.fillRect(0, 0, W, totalH);
-
-      x.textAlign = "left"; x.fillStyle = "#16191D"; x.font = "bold 20px sans-serif";
-      x.fillText(`${quote.atesaki || "元請未設定"} / ${quote.genba || "現場未設定"}`, 24, 32);
-      x.font = "12px sans-serif"; x.fillStyle = "#5B6470";
-      x.fillText(new Date().toLocaleDateString("ja-JP"), 24, 52);
-      x.fillText(`延べ面積 ${R.nobeArea}㎡（${type}タイプ・${heightDir}面断面）`, 24, 70);
-
-      let y = headerH;
-      x.drawImage(heightImg, (W - diagW) / 2, y, diagW, diagH1);
-      y += diagH1 + 16;
-      x.drawImage(planImg, (W - diagW) / 2, y, diagW, diagH2);
-      y += diagH2 + 24;
-
-      x.font = "bold 13px sans-serif"; x.fillStyle = "#16191D";
-      x.fillText("資材リスト（概算・要検証）", 24, y);
-      y += matTop - 20;
-      matLines.forEach((l) => {
-        y += matRowH;
-        if (l.header) {
-          x.font = "bold 11px sans-serif"; x.fillStyle = "#5B6470"; x.textAlign = "left";
-          x.fillText(l.header, 24, y);
-        } else {
-          x.font = "12px sans-serif"; x.fillStyle = "#16191D";
-          x.textAlign = "left"; x.fillText(l.name, 40, y);
-          x.textAlign = "right"; x.fillText(String(l.qty), W - 24, y);
-        }
-      });
-
-      cv.toBlob((b) => (b ? resolve(b) : reject(new Error("canvas_export_failed"))), "image/png");
-      } catch (err) {
-        reject(err);
-      }
-    })();
+  // data URI経由で読み込む場合、width="100%"のままだと基準となるコンテナが無く
+  // 読み込みに失敗する(=Imageのonloadが発火せず無限に待ち続ける)ことがあるため、
+  // 明示的なピクセルサイズに置き換える。最終的なサイズはdrawImageで指定するので
+  // ここでの値はSVGとして読み込めさえすれば厳密でなくてよい。
+  const withExplicitSize = (svgString) => svgString.replace(/width="100%"/, 'width="600" height="600"');
+  const svgToImage = (svgString) => new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => res(img);
+    img.onerror = () => rej(new Error("svg_image_load_failed"));
+    img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(withExplicitSize(svgString));
+  });
+  const drawHeader = (x, W) => {
+    x.textAlign = "left"; x.fillStyle = "#16191D"; x.font = "bold 20px sans-serif";
+    x.fillText(`${quote.atesaki || "元請未設定"} / ${quote.genba || "現場未設定"}`, 24, 32);
+    x.font = "12px sans-serif"; x.fillStyle = "#5B6470";
+    x.fillText(new Date().toLocaleDateString("ja-JP"), 24, 52);
+    x.strokeStyle = "#D3D8DE"; x.beginPath(); x.moveTo(24, 64); x.lineTo(W - 24, 64); x.stroke();
+  };
+  const canvasToBlob = (cv) => new Promise((resolve, reject) => {
+    cv.toBlob((b) => (b ? resolve(b) : reject(new Error("canvas_export_failed"))), "image/png");
   });
 
+  const buildHeightDiagramImage = async () => {
+    const heightSvg = renderToStaticMarkup(
+      <HeightDiagram
+        kiso={parseInt(kiso) || 0} nokiten={parseInt(nokiten) || 0}
+        noki={parseInt(faces[heightDir].noki) || 0} roof={roof} jack={H.jack} type={type}
+        standoff={R.tsuke[heightDir]} lowestKoma={H.lowestKoma} rails={rails}
+        hane={R.faceRows.find((f) => f.name === heightDir)?.f.hane}
+      />
+    );
+    const img = await svgToImage(heightSvg);
+    const sc = 2, W = 440, headerH = 80, diagW = 392, diagH = 392;
+    const totalH = headerH + diagH + 20;
+    const cv = document.createElement("canvas");
+    cv.width = W * sc; cv.height = totalH * sc;
+    const x = cv.getContext("2d"); x.scale(sc, sc);
+    x.fillStyle = "#fff"; x.fillRect(0, 0, W, totalH);
+    drawHeader(x, W);
+    x.font = "11px sans-serif"; x.fillStyle = "#5B6470";
+    x.fillText(`高さ断面図（${heightDir}面・${type}タイプ）`, 24, headerH - 4);
+    x.drawImage(img, (W - diagW) / 2, headerH + 8, diagW, diagH);
+    return canvasToBlob(cv);
+  };
+
+  const buildPlanDiagramImage = async () => {
+    const planSvg = renderToStaticMarkup(
+      <PlanDiagram bw={R.ewLen} bh={R.nsLen} tsuke={R.tsuke} spansEW={R.scEW} spansNS={R.scNS} built={R.built} hane={R.hane} />
+    );
+    const img = await svgToImage(planSvg);
+    const sc = 2, W = 440, headerH = 80, diagW = 392, diagH = Math.round(392 * (320 / 344));
+    const totalH = headerH + diagH + 44;
+    const cv = document.createElement("canvas");
+    cv.width = W * sc; cv.height = totalH * sc;
+    const x = cv.getContext("2d"); x.scale(sc, sc);
+    x.fillStyle = "#fff"; x.fillRect(0, 0, W, totalH);
+    drawHeader(x, W);
+    x.font = "11px sans-serif"; x.fillStyle = "#5B6470";
+    x.fillText("平面 割り付け図（4面）", 24, headerH - 4);
+    x.drawImage(img, (W - diagW) / 2, headerH + 8, diagW, diagH);
+    x.font = "bold 13px sans-serif"; x.fillStyle = "#16191D"; x.textAlign = "right";
+    x.fillText(`延べ面積 ${R.nobeArea}㎡`, W - 24, headerH + diagH + 32);
+    return canvasToBlob(cv);
+  };
+
+  const buildMaterialsListImage = async () => {
+    const matLines = grps.flatMap((g) => [
+      { header: g },
+      ...R.materials.filter((m) => m.grp === g).map((m) => ({ name: m.name, qty: m.qty })),
+    ]);
+    const sc = 2, W = 440, headerH = 80, matRowH = 20;
+    const totalH = headerH + 20 + matLines.length * matRowH + 20;
+    const cv = document.createElement("canvas");
+    cv.width = W * sc; cv.height = totalH * sc;
+    const x = cv.getContext("2d"); x.scale(sc, sc);
+    x.fillStyle = "#fff"; x.fillRect(0, 0, W, totalH);
+    drawHeader(x, W);
+    x.font = "11px sans-serif"; x.fillStyle = "#5B6470";
+    x.fillText("資材リスト（概算・要検証）", 24, headerH - 4);
+    let y = headerH + 16;
+    matLines.forEach((l) => {
+      y += matRowH;
+      if (l.header) {
+        x.font = "bold 11px sans-serif"; x.fillStyle = "#5B6470"; x.textAlign = "left";
+        x.fillText(l.header, 24, y);
+      } else {
+        x.font = "12px sans-serif"; x.fillStyle = "#16191D";
+        x.textAlign = "left"; x.fillText(l.name, 40, y);
+        x.textAlign = "right"; x.fillText(String(l.qty), W - 24, y);
+      }
+    });
+    return canvasToBlob(cv);
+  };
+
+  const buildDiagramImages = async () => {
+    const [heightBlob, planBlob, matBlob] = await Promise.all([
+      buildHeightDiagramImage(), buildPlanDiagramImage(), buildMaterialsListImage(),
+    ]);
+    const siteLabel = quote.genba || "現場";
+    return [
+      { blob: heightBlob, name: `断面図_${siteLabel}.png` },
+      { blob: planBlob, name: `平面図_${siteLabel}.png` },
+      { blob: matBlob, name: `資材リスト_${siteLabel}.png` },
+    ];
+  };
+
   const downloadDiagrams = async () => {
-    const b = await buildDiagramsImage(); const url = URL.createObjectURL(b);
-    const a = document.createElement("a"); a.href = url; a.download = `積算_${quote.genba || "現場"}.png`;
-    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 3000);
+    const files = await buildDiagramImages();
+    files.forEach(({ blob, name }, i) => {
+      setTimeout(() => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a"); a.href = url; a.download = name;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 3000);
+      }, i * 300);
+    });
   };
   const shareDiagrams = async () => {
     try {
-      const b = await buildDiagramsImage(); const f = new File([b], "積算.png", { type: "image/png" });
-      if (navigator.canShare && navigator.canShare({ files: [f] })) { await navigator.share({ files: [f], title: "積算" }); return; }
+      const files = await buildDiagramImages();
+      const fileObjs = files.map(({ blob, name }) => new File([blob], name, { type: "image/png" }));
+      if (navigator.canShare && navigator.canShare({ files: fileObjs })) {
+        await navigator.share({ files: fileObjs, title: "積算" });
+        return;
+      }
     } catch (e) {}
     await downloadDiagrams();
     setMsg("画像を保存しました。LINEではこの画像を添付して送ってください");
