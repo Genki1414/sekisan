@@ -289,6 +289,7 @@ export default function AshiBaseSekisan() {
   const [rails, setRails] = useState(1);
   const [stairs, setStairs] = useState(true);
   const [faceOpen, setFaceOpen] = useState(false);
+  const [matOpen, setMatOpen] = useState(true);
   const [heightDir, setHeightDir] = useState("北");
   const [quote, setQuote] = useState({ atesaki: "", genba: "", tanka: "" });
   const [items, setItems] = useState([]);
@@ -651,14 +652,25 @@ export default function AshiBaseSekisan() {
           </div>
         </ResultCard>
 
-        <ResultCard title="資材リスト（合計）" note="概算・要検証">
-          {grps.map((g) => (
-            <div key={g} style={{ marginBottom: 6 }}>
-              <div style={{ fontSize: 10, color: C.sub, letterSpacing: 0.4, borderBottom: `1px solid ${C.line}`, paddingBottom: 2, marginBottom: 2 }}>{g}</div>
-              {R.materials.filter((m) => m.grp === g).map((m) => (<Row key={m.name} k={m.name} v={String(m.qty)} warn={m.name.includes("根がらみ支柱")} />))}
+        <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 12, marginBottom: 12, overflow: "hidden" }}>
+          <button onClick={() => setMatOpen(!matOpen)} style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", padding: 12, background: "#fff", border: 0 }}>
+            <span style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+              <span style={{ fontSize: 13, fontWeight: 800, color: C.ink }}>資材リスト（合計）</span>
+              <span style={{ fontSize: 10, color: C.red }}>概算・要検証</span>
+            </span>
+            <span style={{ fontFamily: mono, color: C.sub }}>{matOpen ? "▲ 閉じる" : "▼ 展開"}</span>
+          </button>
+          {matOpen && (
+            <div style={{ padding: "0 12px 12px" }}>
+              {grps.map((g) => (
+                <div key={g} style={{ marginBottom: 6 }}>
+                  <div style={{ fontSize: 10, color: C.sub, letterSpacing: 0.4, borderBottom: `1px solid ${C.line}`, paddingBottom: 2, marginBottom: 2 }}>{g}</div>
+                  {R.materials.filter((m) => m.grp === g).map((m) => (<Row key={m.name} k={m.name} v={String(m.qty)} warn={m.name.includes("根がらみ支柱")} />))}
+                </div>
+              ))}
             </div>
-          ))}
-        </ResultCard>
+          )}
+        </div>
 
         <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 12, marginBottom: 12, overflow: "hidden" }}>
           <button onClick={() => setFaceOpen(!faceOpen)} style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", padding: 12, background: "#fff", border: 0 }}>
