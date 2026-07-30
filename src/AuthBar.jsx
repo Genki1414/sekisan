@@ -18,22 +18,32 @@ export default function AuthBar() {
     <div
       style={{
         display: "flex",
+        flexWrap: "wrap",
         alignItems: "center",
         gap: 8,
-        padding: "6px 12px",
+        padding: "8px 12px",
         fontSize: 13,
+        lineHeight: 1.5,
         background: "#f5f5f5",
         borderBottom: "1px solid #ddd",
       }}
     >
-      {error && <span style={{ color: "crimson" }}>ログインエラー: {error}</span>}
+      {error && (
+        <span style={{ color: "crimson", wordBreak: "break-word", flex: "1 1 100%" }}>
+          ログインエラー: {error}
+        </span>
+      )}
       {user ? (
         <>
-          <span>{user.user_metadata?.name ?? user.email} でログイン中</span>
-          <button onClick={signOut}>ログアウト</button>
+          <span style={{ wordBreak: "break-word" }}>{user.user_metadata?.name ?? user.email} でログイン中</span>
+          <button onClick={signOut} style={{ flex: "0 0 auto" }}>
+            ログアウト
+          </button>
         </>
       ) : (
-        <button onClick={startLineLogin}>LINEでログイン（見積書PDF機能を使う場合）</button>
+        <button onClick={startLineLogin} style={{ flex: "1 1 auto", whiteSpace: "normal", textAlign: "center" }}>
+          LINEでログイン（見積書PDF機能を使う場合）
+        </button>
       )}
     </div>
   );
