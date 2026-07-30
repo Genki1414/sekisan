@@ -213,10 +213,10 @@ function Field({ label, val, set, unit = "mm" }) {
     </div></label>);
 }
 function TextField({ label, val, set, ph }) {
-  return (<label style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 0" }}>
+  return (<label style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 0", minWidth: 0 }}>
     <span style={{ fontSize: 11, color: C.sub }}>{label}</span>
     <input value={val} placeholder={ph || ""} onChange={(e) => set(e.target.value)}
-      style={{ border: `1px solid ${C.line}`, borderRadius: 8, padding: "9px 10px", fontSize: 14, color: C.ink, background: "#fff", outline: "none", minWidth: 0 }} />
+      style={{ width: "100%", boxSizing: "border-box", border: `1px solid ${C.line}`, borderRadius: 8, padding: "9px 10px", fontSize: 14, color: C.ink, background: "#fff", outline: "none", minWidth: 0 }} />
   </label>);
 }
 function Section({ title, children }) {
@@ -514,6 +514,10 @@ export default function AshiBaseSekisan() {
           <div style={{ fontSize: 11, color: C.sub }}>戸建・くさび式 / 4面</div>
         </div>
         <div style={{ height: 3, background: C.amber, borderRadius: 2, marginBottom: 14 }} />
+
+        <div style={{ background: C.chip, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 10px", marginBottom: 12, fontSize: 11, color: C.sub }}>
+          ※ 数値はサンプルです。実際の現場の寸法に書き換えてご利用ください。
+        </div>
 
         <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
           {["A", "B"].map((t) => (
