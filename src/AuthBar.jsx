@@ -36,9 +36,42 @@ export default function AuthBar() {
       )}
       {user ? (
         <>
-          <span style={{ wordBreak: "break-word", fontWeight: 600 }}>
-            {user.user_metadata?.name ?? user.email} でログイン中
-          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "1 1 auto", minWidth: 0 }}>
+            {user.user_metadata?.picture ? (
+              <img
+                src={user.user_metadata.picture}
+                alt=""
+                style={{ width: 28, height: 28, borderRadius: "50%", flex: "0 0 auto", objectFit: "cover" }}
+              />
+            ) : (
+              <div
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: "50%",
+                  flex: "0 0 auto",
+                  background: "#06C755",
+                  color: "#fff",
+                  fontWeight: 700,
+                  fontSize: 13,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                {(user.user_metadata?.name ?? user.email ?? "?").slice(0, 1)}
+              </div>
+            )}
+            <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+              <span style={{ fontWeight: 700, wordBreak: "break-word" }}>
+                {user.user_metadata?.name ?? user.email}
+              </span>
+              <span style={{ fontSize: 11, color: "#5B6470", display: "flex", alignItems: "center", gap: 4 }}>
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#06C755", display: "inline-block" }} />
+                LINEでログイン中
+              </span>
+            </div>
+          </div>
           <button
             onClick={signOut}
             style={{ flex: "0 0 auto", padding: "6px 12px", borderRadius: 8, border: "1px solid #D3D8DE", background: "#F1F3F6", color: "#16191D", fontWeight: 700 }}
