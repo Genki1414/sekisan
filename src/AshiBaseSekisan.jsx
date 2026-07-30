@@ -711,6 +711,9 @@ export default function AshiBaseSekisan() {
           この部材を AshiBase で資材管理 <span style={{ fontWeight: 400, fontSize: 11, opacity: 0.7 }}>（接続準備中）</span>
         </button>
         <div style={{ textAlign: "center", fontSize: 10, color: C.sub, marginTop: 8 }}>概算です。実施工は現調前提。</div>
+        <div style={{ textAlign: "center", fontSize: 10, marginTop: 10 }}>
+          <a href="/tokushoho.html" style={{ color: C.sub }}>特定商取引法に基づく表示</a>
+        </div>
 
         {pdfView && (
           <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 60, overflow: "auto", padding: 14 }}>
