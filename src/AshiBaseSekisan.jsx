@@ -228,10 +228,11 @@ function PlanDiagram({ bw, bh, tsuke, spansEW, spansNS, built, hane = {} }) {
       {built.南 && <DimV x={bx + bW / 2} y1={by + bH} y2={sy + sH} text={`${tsuke.南}`} />}
       {built.東 && <DimH x1={bx + bW} x2={sx + sW} y={by + bH / 2} text={`${tsuke.東}`} />}
       {built.西 && <DimH x1={sx} x2={bx} y={by + bH / 2} text={`${tsuke.西}`} />}
-      {built.北 && hane.北 && <text x={bx + bW / 2} y={sy - 12} fontSize="8" fontWeight="700" fill={C.red} textAnchor="middle">ハネ出し</text>}
-      {built.南 && hane.南 && <text x={bx + bW / 2} y={sy + sH + 16} fontSize="8" fontWeight="700" fill={C.red} textAnchor="middle">ハネ出し</text>}
-      {built.東 && hane.東 && <text x={sx + sW + 4} y={by + bH / 2 - 8} fontSize="8" fontWeight="700" fill={C.red} textAnchor="start">ハネ出し</text>}
-      {built.西 && hane.西 && <text x={sx - 4} y={by + bH / 2 - 8} fontSize="8" fontWeight="700" fill={C.red} textAnchor="end">ハネ出し</text>}
+      {/* スパン長さ表示(北/西マージン)と重ならないよう、各離れの寸法線と同じ帯の中で中心からずらして配置 */}
+      {built.北 && hane.北 && <text x={bx + bW / 2 - 26} y={(sy + by) / 2 + 3} fontSize="8" fontWeight="700" fill={C.red} textAnchor="middle">ハネ出し</text>}
+      {built.南 && hane.南 && <text x={bx + bW / 2 - 26} y={(by + bH + sy + sH) / 2 + 3} fontSize="8" fontWeight="700" fill={C.red} textAnchor="middle">ハネ出し</text>}
+      {built.東 && hane.東 && <text x={(bx + bW + sx + sW) / 2} y={by + bH / 2 - 14} fontSize="8" fontWeight="700" fill={C.red} textAnchor="middle">ハネ出し</text>}
+      {built.西 && hane.西 && <text x={(sx + bx) / 2} y={by + bH / 2 - 14} fontSize="8" fontWeight="700" fill={C.red} textAnchor="middle">ハネ出し</text>}
     </svg>
   );
 }
