@@ -44,7 +44,7 @@ function heightEngine({ nokiten, kiso, roof, type }) {
 }
 const ADJ_PIECES = { A: [400, 300, 200], B: [350, 150] };
 // [floorV, ceilV]内でtargetに近い割り付け。調整材（小片）を最小化し標準スパン(1200/900/600)を優先
-function layoutLength(target, type, floorV = 0, ceilV = Infinity) {
+function searchLayout(target, type, floorV, ceilV) {
   const adj = ADJ_PIECES[type] || [];
   const adjOpts = [[]]; adj.forEach((x) => adjOpts.push([x])); adj.forEach((x) => adj.forEach((y) => adjOpts.push([x, y])));
   const cap = ceilV === Infinity ? target + 1200 : ceilV;
@@ -67,6 +67,13 @@ function layoutLength(target, type, floorV = 0, ceilV = Infinity) {
             if (better) best = { nAdj, d, a, pieces, spans: [...Array(a).fill(1800), ...Array(b).fill(1200), ...Array(c).fill(900), ...Array(e).fill(600), ...ao] };
           });
         }
+  return best;
+}
+function layoutLength(target, type, floorV = 0, ceilV = Infinity) {
+  // 敷地幅の頭打ちで下限=上限(ぴったりこの値限定)になるケースで、
+  // 標準スパン+調整材の組合せでは1mm単位のその値を作れないことがある。
+  // その場合に割付ゼロで諦めず、制約を外してtargetに最も近い組合せへフォールバックする。
+  const best = searchLayout(target, type, floorV, ceilV) || searchLayout(target, type, 0, Infinity);
   return best ? best.spans.sort((x, y) => y - x) : [];
 }
 const sum = (a) => a.reduce((x, y) => x + y, 0);
