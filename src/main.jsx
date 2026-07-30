@@ -2,6 +2,9 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import AshiBaseSekisan from "./AshiBaseSekisan.jsx";
 import AuthBar from "./AuthBar.jsx";
+import { recordPageView } from "./lib/analytics";
+
+recordPageView();
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
