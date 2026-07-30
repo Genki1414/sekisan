@@ -24,24 +24,33 @@ export default function AuthBar() {
         padding: "8px 12px",
         fontSize: 13,
         lineHeight: 1.5,
-        background: "#f5f5f5",
-        borderBottom: "1px solid #ddd",
+        background: "#fff",
+        borderBottom: "1px solid #D3D8DE",
+        color: "#16191D",
       }}
     >
       {error && (
-        <span style={{ color: "crimson", wordBreak: "break-word", flex: "1 1 100%" }}>
+        <span style={{ color: "#BE3A2B", fontWeight: 700, wordBreak: "break-word", flex: "1 1 100%" }}>
           ログインエラー: {error}
         </span>
       )}
       {user ? (
         <>
-          <span style={{ wordBreak: "break-word" }}>{user.user_metadata?.name ?? user.email} でログイン中</span>
-          <button onClick={signOut} style={{ flex: "0 0 auto" }}>
+          <span style={{ wordBreak: "break-word", fontWeight: 600 }}>
+            {user.user_metadata?.name ?? user.email} でログイン中
+          </span>
+          <button
+            onClick={signOut}
+            style={{ flex: "0 0 auto", padding: "6px 12px", borderRadius: 8, border: "1px solid #D3D8DE", background: "#F1F3F6", color: "#16191D", fontWeight: 700 }}
+          >
             ログアウト
           </button>
         </>
       ) : (
-        <button onClick={startLineLogin} style={{ flex: "1 1 auto", whiteSpace: "normal", textAlign: "center" }}>
+        <button
+          onClick={startLineLogin}
+          style={{ flex: "1 1 auto", whiteSpace: "normal", textAlign: "center", padding: "9px 12px", borderRadius: 8, border: 0, background: "#06C755", color: "#fff", fontWeight: 700 }}
+        >
           LINEでログイン（見積書PDF機能を使う場合）
         </button>
       )}

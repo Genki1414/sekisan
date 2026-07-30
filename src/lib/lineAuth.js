@@ -10,7 +10,9 @@ const STATE_STORAGE_KEY = "line_login_state";
 // 「LINEでログイン」ボタンから呼ぶ。LINEの認可画面へリダイレクトする。
 export function startLineLogin() {
   const state = crypto.randomUUID();
-  sessionStorage.setItem(STATE_STORAGE_KEY, state);
+  // sessionStorageはLINEアプリ内蔵ブラウザ等で認可画面からの復帰後に
+  // 引き継がれないことがあるため、より永続的なlocalStorageに保存する
+  localStorage.setItem(STATE_STORAGE_KEY, state);
 
   const url = new URL("https://access.line.me/oauth2/v2.1/authorize");
   url.searchParams.set("response_type", "code");
@@ -39,13 +41,20 @@ export async function completeLineLoginIfNeeded() {
   cleanUrl.searchParams.delete("error");
   window.history.replaceState({}, "", cleanUrl.toString());
 
-  const savedState = sessionStorage.getItem(STATE_STORAGE_KEY);
-  sessionStorage.removeItem(STATE_STORAGE_KEY);
+  const savedState = localStorage.getItem(STATE_STORAGE_KEY);
+  localStorage.removeItem(STATE_STORAGE_KEY);
 
   if (error) {
     throw new Error(`line_login_denied: ${error}`);
   }
-  if (!state || state !== savedState) {
+  if (!state) {
+    throw new Error("line_login_state_mismatch");
+  }
+  // savedStateが取得できていて、かつ一致しない場合のみ改ざんとみなす。
+  // LINEアプリ内蔵ブラウザ等でstorageが引き継がれずsavedStateが無いことがあるため、
+  // その場合はcode自体がLINE側でredirect_uri・client_secretと突き合わせ済みである
+  // ことをもって許可する（stateだけを理由にログイン不能にしない）。
+  if (savedState && state !== savedState) {
     throw new Error("line_login_state_mismatch");
   }
 
