@@ -3,7 +3,7 @@ import { useSession } from "./lib/useSession";
 import { startLineLogin } from "./lib/lineAuth";
 import { fetchCompanySettings, saveCompanySettings } from "./lib/profile";
 import { consumePdfCredit, peekPdfStatus } from "./lib/pdfCredits";
-import { startCheckout } from "./lib/billing";
+import { startCheckout, openBillingPortal } from "./lib/billing";
 
 /* 足場積算（戸建・くさび式）— 平面割り付け図 + 高さ断面図（コマ・手摺・寸法）+ 全資材 */
 
@@ -692,6 +692,16 @@ export default function AshiBaseSekisan() {
                 style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: `1px solid ${C.line}`, background: "#fff", color: C.ink, fontWeight: 700, fontSize: 12 }}
               >
                 年額5,000円で無制限
+              </button>
+            </div>
+          )}
+          {user && pdfStatus.plan !== "none" && (
+            <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px dashed ${C.line}`, textAlign: "center" }}>
+              <button
+                onClick={() => openBillingPortal().catch((e) => setMsg(`契約管理ページを開けませんでした: ${e.message}`))}
+                style={{ padding: "8px 14px", borderRadius: 10, border: `1px solid ${C.line}`, background: "#fff", color: C.sub, fontWeight: 700, fontSize: 12 }}
+              >
+                契約内容の確認・解約はこちら
               </button>
             </div>
           )}

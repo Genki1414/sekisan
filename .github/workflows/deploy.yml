@@ -32,6 +32,7 @@ jobs:
           VITE_LINE_REDIRECT_URI: ${{ secrets.VITE_LINE_REDIRECT_URI }}
           VITE_LINE_LOGIN_FUNCTION_URL: ${{ secrets.VITE_LINE_LOGIN_FUNCTION_URL }}
           VITE_CHECKOUT_FUNCTION_URL: ${{ secrets.VITE_CHECKOUT_FUNCTION_URL }}
+          VITE_PORTAL_FUNCTION_URL: ${{ secrets.VITE_PORTAL_FUNCTION_URL }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
