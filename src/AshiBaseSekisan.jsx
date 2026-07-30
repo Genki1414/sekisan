@@ -353,7 +353,7 @@ export default function AshiBaseSekisan() {
     const add = (list, cnt) => list.forEach((k) => { const nm = KOMA_NAME[type][k] + "支柱"; bySize[nm] = (bySize[nm] || 0) + cnt; });
     add(H.komaList, outerPosts); add(H.innerKomaList, innerLines);
 
-    const fwOf = (rebar) => (rebar > 0 && rebar <= 600) ? 400 : 600; // 離れ→足場幅（≦600で400幅）
+    const fwOf = (rebar) => (rebar > 0 && rebar <= 700) ? 400 : 600; // 離れ→足場幅（≦700で400幅）
     const perSpanTesuri = 1 + D * rails + (roof ? 2 : 0);
     const ita = {}, tesuri = {}, mesh = {};
     builtFaces.forEach((k) => {
