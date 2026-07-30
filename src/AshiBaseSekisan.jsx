@@ -108,7 +108,8 @@ function HeightDiagram({ kiso, nokiten, noki, roof, jack, type, standoff, lowest
   const wallX = 150;
   const eaveTip = wallX + Math.max(noki, 1) * hsc;
   const scafX = wallX + Math.max(standoff || 200, 200) * hsc;
-  const platforms = []; for (let h = layer; h <= nokiten - layer + 1; h += layer) platforms.push(kiso + h);
+  // 最上段踏板＝軒天高−階高を基準に、そこから階高刻みで下へ配置する（軒天から逆算）
+  const platforms = []; for (let h = nokiten - layer; h > 0; h -= layer) platforms.push(kiso + h);
   const komaMarks = []; for (let h = lowestKoma; h <= total + 1; h += koma) komaMarks.push(h);
   const railMarks = []; platforms.forEach((p) => { if (rails >= 2) railMarks.push(p + koma); railMarks.push(p + 2 * koma); });
   return (
@@ -139,7 +140,7 @@ function HeightDiagram({ kiso, nokiten, noki, roof, jack, type, standoff, lowest
       <DimV x={wallX - 50} y1={y(kiso)} y2={y(kiso + nokiten)} text={`軒天 ${nokiten}`} />
       <DimH x1={wallX} x2={scafX} y={ground - 12} text={`離れ ${standoff}`} />
       <DimV x={W - 12} y1={ground} y2={y(total)} text={`足場高 ${total}`} />
-      <text x={scafX + 46} y={y(lowestKoma) + 3} fontSize="8" fill={C.steel} fontFamily={mono}>最下ｺﾏ ｵﾌｾｯﾄ{offset >= 0 ? "+" : ""}{offset}</text>
+      <text x={scafX + 46} y={y(lowestKoma) + 3} fontSize="8" fill={C.steel} fontFamily={mono}>水切りつら{offset >= 0 ? "+" : ""}{offset}</text>
     </svg>
   );
 }
@@ -566,7 +567,7 @@ export default function AshiBaseSekisan() {
         <ResultCard title="高さ図解（断面）" hero>
           <HeightDiagram kiso={parseInt(kiso) || 0} nokiten={parseInt(nokiten) || 0} noki={parseInt(faces.北.noki) || 0} roof={roof} jack={H.jack} type={type} standoff={R.tsuke.北} lowestKoma={H.lowestKoma} rails={rails} />
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 8, fontSize: 11, color: C.sub }}>
-            <span>ｵﾌｾｯﾄ <b style={{ fontFamily: mono, color: C.ink }}>{H.offset >= 0 ? "+" : ""}{H.offset}</b></span>
+            <span>水切りつら <b style={{ fontFamily: mono, color: C.ink }}>{H.offset >= 0 ? "+" : ""}{H.offset}</b></span>
             <span>段数 <b style={{ fontFamily: mono, color: C.ink }}>{H.danCount}</b></span>
             <span>総コマ <b style={{ fontFamily: mono, color: C.ink }}>{H.totalKoma}</b></span>
             {H.negarami && <span>根がらみ <b style={{ fontFamily: mono, color: C.red }}>必要</b></span>}
