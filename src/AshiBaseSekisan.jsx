@@ -29,6 +29,12 @@ function composeKoma(total) {
   if (rem > 0) list.push(POST_KOMA.slice().reverse().find((k) => k >= rem) || 1);
   return list;
 }
+// 1本の支柱を構成するコマの内訳を「36支柱×2本、09支柱×1本」のように表す
+function describeKomaList(list, type) {
+  const count = {};
+  list.forEach((k) => { const nm = KOMA_NAME[type][k] + "支柱"; count[nm] = (count[nm] || 0) + 1; });
+  return Object.entries(count).map(([nm, n]) => `${nm}×${n}本`).join("、");
+}
 function heightEngine({ nokiten, kiso, roof, type }) {
   const layer = LAYER[type], koma = KOMA[type], stub = STUB[type], roofAdd = roof ? 900 : 0;
   let offset = nokiten % layer, jack = kiso + offset - stub, negarami = false, g = 0;
@@ -105,7 +111,7 @@ function DimV({ x, y1, y2, text }) {
 }
 
 // ===== 高さ断面図 =====
-function HeightDiagram({ kiso, nokiten, noki, roof, jack, type, standoff, lowestKoma, rails }) {
+function HeightDiagram({ kiso, nokiten, noki, roof, jack, type, standoff, lowestKoma, rails, hane }) {
   const W = 344, Hh = 344, ground = 294, topPad = 30;
   const total = kiso + nokiten + (roof ? 900 : 0);
   const sc = (ground - topPad) / Math.max(total, 1);
@@ -117,6 +123,7 @@ function HeightDiagram({ kiso, nokiten, noki, roof, jack, type, standoff, lowest
   const scafX = wallX + Math.max(standoff || 200, 200) * hsc;
   // 最上段踏板＝軒天高−階高を基準に、そこから階高刻みで下へ配置する（軒天から逆算）
   const platforms = []; for (let h = nokiten - layer; h > 0; h -= layer) platforms.push(kiso + h);
+  platforms.sort((a, b) => a - b); // 下から1段目・2段目…と数えられるよう昇順に
   const komaMarks = []; for (let h = lowestKoma; h <= total + 1; h += koma) komaMarks.push(h);
   const railMarks = []; platforms.forEach((p) => { if (rails >= 2) railMarks.push(p + koma); railMarks.push(p + 2 * koma); });
   return (
@@ -134,12 +141,18 @@ function HeightDiagram({ kiso, nokiten, noki, roof, jack, type, standoff, lowest
       <line x1={wallX} y1={y(kiso + nokiten)} x2={eaveTip} y2={y(kiso + nokiten)} stroke="#7a6b55" strokeWidth="3" />
       <polygon points={`${wallX - 6},${y(kiso + nokiten)} ${(wallX + eaveTip) / 2},${y(kiso + nokiten) - 24} ${eaveTip + 2},${y(kiso + nokiten)}`} fill="#a08b6a" opacity="0.45" />
       <DimH x1={wallX} x2={eaveTip} y={y(kiso + nokiten) - 26} text={`軒出 ${noki}`} />
+      {hane && <text x={wallX} y={y(kiso + nokiten) - 40} fontSize="8" fontWeight="700" fill={C.red} fontFamily={mono}>ハネ出し</text>}
       <rect x={scafX - 3} y={ground - jack * sc} width="6" height={jack * sc} fill={C.steel} />
       <text x={scafX + 8} y={ground - 3} fontSize="8" fill={C.steel} fontFamily={mono}>ｼﾞｬｯｷ{jack}</text>
       <line x1={scafX} y1={ground - jack * sc} x2={scafX} y2={y(total)} stroke={C.ink} strokeWidth="2.5" />
       {komaMarks.map((h, i) => (<line key={`k${i}`} x1={scafX - 4} y1={y(h)} x2={scafX} y2={y(h)} stroke={C.ink} strokeWidth="1.2" />))}
       {railMarks.map((h, i) => (<circle key={`r${i}`} cx={scafX + 4} cy={y(h)} r="3.4" fill="#F4C21B" stroke="#9a7b12" strokeWidth="0.6" />))}
-      {platforms.map((h, i) => (<line key={`p${i}`} x1={scafX - 16} y1={y(h)} x2={scafX} y2={y(h)} stroke={C.deck} strokeWidth="4" />))}
+      {platforms.map((h, i) => (
+        <g key={`p${i}`}>
+          <line x1={scafX - 16} y1={y(h)} x2={scafX} y2={y(h)} stroke={C.deck} strokeWidth="4" />
+          <text x={scafX - 20} y={y(h) + 3} fontSize="7.5" fill={C.sub} textAnchor="end" fontFamily={mono}>{i + 1}段目</text>
+        </g>
+      ))}
       {roof && <><circle cx={scafX + 4} cy={y(total)} r="3.4" fill="#F4C21B" stroke="#9a7b12" strokeWidth="0.6" />
         <circle cx={scafX + 4} cy={y(kiso + nokiten + 450)} r="3.4" fill="#F4C21B" stroke="#9a7b12" strokeWidth="0.6" />
         <text x={scafX + 10} y={y(total) + 3} fontSize="8" fill={C.sub} fontFamily={mono}>落下手摺</text></>}
@@ -153,7 +166,7 @@ function HeightDiagram({ kiso, nokiten, noki, roof, jack, type, standoff, lowest
 }
 
 // ===== 平面 割り付け図（4面まとめ）=====
-function PlanDiagram({ bw, bh, tsuke, spansEW, spansNS, built }) {
+function PlanDiagram({ bw, bh, tsuke, spansEW, spansNS, built, hane = {} }) {
   const W = 344, H = 320, m = 40, GAP = 30;
   const gN = built.北 ? GAP : 4, gS = built.南 ? GAP : 4, gE = built.東 ? GAP : 4, gW = built.西 ? GAP : 4;
   const availW = W - 2 * m - (gW + gE), availH = H - 2 * m - (gN + gS);
@@ -206,6 +219,10 @@ function PlanDiagram({ bw, bh, tsuke, spansEW, spansNS, built }) {
       {built.南 && <DimV x={bx + bW / 2} y1={by + bH} y2={sy + sH} text={`${tsuke.南}`} />}
       {built.東 && <DimH x1={bx + bW} x2={sx + sW} y={by + bH / 2} text={`${tsuke.東}`} />}
       {built.西 && <DimH x1={sx} x2={bx} y={by + bH / 2} text={`${tsuke.西}`} />}
+      {built.北 && hane.北 && <text x={bx + bW / 2} y={sy - 12} fontSize="8" fontWeight="700" fill={C.red} textAnchor="middle">ハネ出し</text>}
+      {built.南 && hane.南 && <text x={bx + bW / 2} y={sy + sH + 16} fontSize="8" fontWeight="700" fill={C.red} textAnchor="middle">ハネ出し</text>}
+      {built.東 && hane.東 && <text x={sx + sW + 4} y={by + bH / 2 - 8} fontSize="8" fontWeight="700" fill={C.red} textAnchor="start">ハネ出し</text>}
+      {built.西 && hane.西 && <text x={sx - 4} y={by + bH / 2 - 8} fontSize="8" fontWeight="700" fill={C.red} textAnchor="end">ハネ出し</text>}
     </svg>
   );
 }
@@ -421,7 +438,8 @@ export default function AshiBaseSekisan() {
     const faceTot = {}; PERFACE_ROWS.forEach((r) => faceTot[r] = FACE_KEYS.reduce((a, k) => a + faceMat[k][r], 0));
     const perimeter = builtFaces.reduce((a, k) => a + sum(spansOf(k)), 0);
     const nobeArea = Math.round((perimeter * H.topGround) / 1e6 * 10) / 10; // 組立面の外周×足場高 ㎡
-    return { H, faceRows, materials, faceMat, faceTot, tsuke, scEW, scNS, ewLen, nsLen, built, nobeArea };
+    const hane = Object.fromEntries(faceRows.map((r) => [r.name, r.f.hane]));
+    return { H, faceRows, materials, faceMat, faceTot, tsuke, scEW, scNS, ewLen, nsLen, built, nobeArea, hane };
   }, [type, nokiten, kiso, roof, rails, stairs, faces]);
 
   const H = R.H;
@@ -572,17 +590,22 @@ export default function AshiBaseSekisan() {
         </Section>
 
         <ResultCard title="高さ図解（断面）" hero>
-          <HeightDiagram kiso={parseInt(kiso) || 0} nokiten={parseInt(nokiten) || 0} noki={parseInt(faces.北.noki) || 0} roof={roof} jack={H.jack} type={type} standoff={R.tsuke.北} lowestKoma={H.lowestKoma} rails={rails} />
+          <HeightDiagram kiso={parseInt(kiso) || 0} nokiten={parseInt(nokiten) || 0} noki={parseInt(faces.北.noki) || 0} roof={roof} jack={H.jack} type={type} standoff={R.tsuke.北} lowestKoma={H.lowestKoma} rails={rails} hane={R.faceRows.find((f) => f.name === "北")?.f.hane} />
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 8, fontSize: 11, color: C.sub }}>
             <span>水切りつら <b style={{ fontFamily: mono, color: C.ink }}>{H.offset >= 0 ? "+" : ""}{H.offset}</b></span>
             <span>段数 <b style={{ fontFamily: mono, color: C.ink }}>{H.danCount}</b></span>
             <span>総コマ <b style={{ fontFamily: mono, color: C.ink }}>{H.totalKoma}</b></span>
             {H.negarami && <span>根がらみ <b style={{ fontFamily: mono, color: C.red }}>必要</b></span>}
           </div>
+          <div style={{ marginTop: 6, fontSize: 11, color: C.sub, lineHeight: 1.7 }}>
+            <div>使用支柱（1本あたり）</div>
+            <div>外柱：<b style={{ fontFamily: mono, color: C.ink }}>{describeKomaList(H.komaList, type)}</b></div>
+            <div>内柱：<b style={{ fontFamily: mono, color: C.ink }}>{describeKomaList(H.innerKomaList, type)}</b></div>
+          </div>
         </ResultCard>
 
         <ResultCard title="平面 割り付け図（4面）">
-          <PlanDiagram bw={R.ewLen} bh={R.nsLen} tsuke={R.tsuke} spansEW={R.scEW} spansNS={R.scNS} built={R.built} />
+          <PlanDiagram bw={R.ewLen} bh={R.nsLen} tsuke={R.tsuke} spansEW={R.scEW} spansNS={R.scNS} built={R.built} hane={R.hane} />
           <div style={{ marginTop: 8 }}>
             {R.faceRows.map((f) => (
               <div key={f.name} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "3px 0", fontSize: 12 }}>
