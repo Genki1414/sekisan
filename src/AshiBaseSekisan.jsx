@@ -5,7 +5,7 @@ import { startLineLogin } from "./lib/lineAuth";
 import { fetchCompanySettings, saveCompanySettings } from "./lib/profile";
 import { consumePdfCredit, peekPdfStatus } from "./lib/pdfCredits";
 import { startCheckout, openBillingPortal } from "./lib/billing";
-import { listProjects, saveProject } from "./lib/projects";
+import { listProjects, saveProject, deleteProject } from "./lib/projects";
 
 /* 足場積算（戸建・くさび式）— 平面割り付け図 + 高さ断面図（コマ・手摺・寸法）+ 全資材 */
 
@@ -133,7 +133,7 @@ function HeightDiagram({ kiso, nokiten, noki, roof, jack, type, standoff, lowest
   const innerTopAbs = kiso + Math.max(0, nokiten - layer);
   const innerKomaMarks = []; for (let h = lowestKoma; h <= innerTopAbs + 1; h += koma) innerKomaMarks.push(h);
   return (
-    <svg viewBox={`0 0 ${W} ${Hh}`} width="100%" style={{ background: C.sky, borderRadius: 8 }}>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox={`0 0 ${W} ${Hh}`} width="100%" style={{ background: C.sky, borderRadius: 8 }}>
       <rect x="0" y={ground} width={W} height={Hh - ground} fill={C.soil} />
       <line x1="0" y1={ground} x2={W} y2={ground} stroke="#9c8a70" strokeWidth="1.5" />
       <text x={6} y={ground + 13} fontSize="9" fill="#7a6b55" fontFamily={mono}>地面</text>
@@ -195,7 +195,7 @@ function PlanDiagram({ bw, bh, tsuke, spansEW, spansNS, built, hane = {} }) {
   const innerTopX = allTopX.filter((_, i) => i % 2 === 0 && i > 0 && i < allTopX.length - 1), innerSideY = allSideY.filter((_, i) => i % 2 === 0 && i > 0 && i < allSideY.length - 1);
   const edge = (b) => (b ? C.amber : "#cfd4da"), dash = (b) => (b ? "" : "4 3"), lbl = (b) => (b ? C.ink : "#b4bac2");
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ background: "#fff", borderRadius: 8, border: `1px solid ${C.line}` }}>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox={`0 0 ${W} ${H}`} width="100%" style={{ background: "#fff", borderRadius: 8, border: `1px solid ${C.line}` }}>
       <line x1={sx} y1={sy} x2={sx + sW} y2={sy} stroke={edge(built.北)} strokeWidth="2" strokeDasharray={dash(built.北)} />
       <line x1={sx} y1={sy + sH} x2={sx + sW} y2={sy + sH} stroke={edge(built.南)} strokeWidth="2" strokeDasharray={dash(built.南)} />
       <line x1={sx} y1={sy} x2={sx} y2={sy + sH} stroke={edge(built.西)} strokeWidth="2" strokeDasharray={dash(built.西)} />
@@ -295,6 +295,11 @@ export default function AshiBaseSekisan() {
   const [savedOpen, setSavedOpen] = useState(false);
   const [savedProjects, setSavedProjects] = useState([]);
   const [saveMsg, setSaveMsg] = useState("");
+  const [saveModalOpen, setSaveModalOpen] = useState(false);
+  const [saveForm, setSaveForm] = useState({ clientName: "", siteName: "" });
+  const [saveConfirmed, setSaveConfirmed] = useState(false);
+  const [saveSubmitting, setSaveSubmitting] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [heightDir, setHeightDir] = useState("北");
   const [quote, setQuote] = useState({ atesaki: "", genba: "", tanka: "" });
   const [items, setItems] = useState([]);
@@ -481,18 +486,28 @@ export default function AshiBaseSekisan() {
     if (!user) { setMsg("設定の保存にはLINEログインが必要です"); return; }
     try { await saveCompanySettings(ns); } catch (e) { setMsg("設定の保存に失敗しました"); }
   };
-  const handleSaveProject = async () => {
+  const openSaveModal = () => {
     if (!user) { setMsg("保存にはLINEログインが必要です"); startLineLogin(); return; }
+    setSaveForm({ clientName: quote.atesaki, siteName: quote.genba });
+    setSaveConfirmed(false);
+    setSaveModalOpen(true);
+  };
+  const submitSaveProject = async () => {
+    setSaveSubmitting(true);
     try {
       await saveProject({
-        clientName: quote.atesaki,
-        siteName: quote.genba,
+        clientName: saveForm.clientName,
+        siteName: saveForm.siteName,
         input: { type, nokiten, kiso, roof, rails, stairs, faces },
       });
+      setQuote({ ...quote, atesaki: saveForm.clientName, genba: saveForm.siteName });
       setSavedProjects(await listProjects());
-      setMsg("保存しました");
+      setSaveConfirmed(true);
     } catch (e) {
       setMsg("保存に失敗しました");
+      setSaveModalOpen(false);
+    } finally {
+      setSaveSubmitting(false);
     }
   };
   const handleLoadProject = (p) => {
@@ -504,7 +519,18 @@ export default function AshiBaseSekisan() {
     if (inp.rails != null) setRails(inp.rails);
     if (inp.stairs != null) setStairs(inp.stairs);
     if (inp.faces) setFaces(inp.faces);
+    setQuote({ ...quote, atesaki: p.client_name || "", genba: p.site_name || "" });
     setMsg(`「${p.client_name || "元請未設定"} / ${p.site_name || "現場未設定"}」を読み込みました`);
+  };
+  const handleDeleteProject = async (id) => {
+    try {
+      await deleteProject(id);
+      setSavedProjects(await listProjects());
+    } catch (e) {
+      setMsg("削除に失敗しました");
+    } finally {
+      setConfirmDeleteId(null);
+    }
   };
   const addItem = () => setItems([...items, { name: "", qty: "", unit: "", price: "" }]);
   const setItem = (i, k, v) => setItems(items.map((it, j) => (j === i ? { ...it, [k]: v } : it)));
@@ -575,14 +601,21 @@ export default function AshiBaseSekisan() {
     setMsg("画像を保存しました。LINEではこの画像を添付して送ってください");
   };
 
-  const buildDiagramsImage = () => new Promise((resolve) => {
-    const svgToImage = (svgString) => new Promise((res) => {
+  const buildDiagramsImage = () => new Promise((resolve, reject) => {
+    // data URI経由で読み込む場合、width="100%"のままだと基準となるコンテナが無く
+    // 読み込みに失敗する(=Imageのonloadが発火せず無限に待ち続ける)ことがあるため、
+    // 明示的なピクセルサイズに置き換える。最終的なサイズはdrawImageで指定するので
+    // ここでの値はSVGとして読み込めさえすれば厳密でなくてよい。
+    const withExplicitSize = (svgString) => svgString.replace(/width="100%"/, 'width="600" height="600"');
+    const svgToImage = (svgString) => new Promise((res, rej) => {
       const img = new Image();
       img.onload = () => res(img);
-      img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgString);
+      img.onerror = () => rej(new Error("svg_image_load_failed"));
+      img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(withExplicitSize(svgString));
     });
 
     (async () => {
+      try {
       const heightSvg = renderToStaticMarkup(
         <HeightDiagram
           kiso={parseInt(kiso) || 0} nokiten={parseInt(nokiten) || 0}
@@ -637,7 +670,10 @@ export default function AshiBaseSekisan() {
         }
       });
 
-      cv.toBlob((b) => resolve(b), "image/png");
+      cv.toBlob((b) => (b ? resolve(b) : reject(new Error("canvas_export_failed"))), "image/png");
+      } catch (err) {
+        reject(err);
+      }
     })();
   });
 
@@ -666,7 +702,7 @@ export default function AshiBaseSekisan() {
       setPdfStatus({ remainingFree: result.plan === "none" ? result.remaining_free : null, plan: result.plan });
       await shareDiagrams();
     } catch (e) {
-      setMsg("共有画像の作成でエラーが発生しました");
+      setMsg(`共有画像の作成でエラーが発生しました: ${e.message || e}`);
     }
   };
 
@@ -827,11 +863,11 @@ export default function AshiBaseSekisan() {
 
         <Section title="断面・平面・資材リストの保存 / 共有">
           <div style={{ fontSize: 11, color: C.sub, marginBottom: 8 }}>
-            保存・共有は下の「見積書」欄の宛先（お客様）＝元請名、現場名として記録されます。
+            保存すると元請名・現場名が見積書欄の宛先（お客様）・現場名にも反映されます。
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <button
-              onClick={handleSaveProject}
+              onClick={openSaveModal}
               style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: 0, background: C.ink, color: "#fff", fontWeight: 700, fontSize: 13 }}
             >
               {user ? "この内容を保存" : "保存（要LINEログイン）"}
@@ -853,16 +889,30 @@ export default function AshiBaseSekisan() {
                 <span style={{ fontFamily: mono, color: C.sub, fontSize: 12 }}>{savedOpen ? "▲ 閉じる" : "▼ 展開"}</span>
               </button>
               {savedOpen && (
-                <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6, maxHeight: 240, overflowY: "auto" }}>
+                <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6, maxHeight: 280, overflowY: "auto" }}>
                   {savedProjects.map((p) => (
-                    <button
-                      key={p.id}
-                      onClick={() => handleLoadProject(p)}
-                      style={{ textAlign: "left", padding: "8px 10px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff" }}
-                    >
-                      <div style={{ fontSize: 12, fontWeight: 700, color: C.ink }}>{p.client_name || "元請未設定"} / {p.site_name || "現場未設定"}</div>
-                      <div style={{ fontSize: 10, color: C.sub }}>{new Date(p.created_at).toLocaleString("ja-JP")}</div>
-                    </button>
+                    <div key={p.id} style={{ display: "flex", gap: 6, alignItems: "stretch" }}>
+                      <button
+                        onClick={() => handleLoadProject(p)}
+                        style={{ flex: 1, textAlign: "left", padding: "8px 10px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff" }}
+                      >
+                        <div style={{ fontSize: 12, fontWeight: 700, color: C.ink }}>{p.client_name || "元請未設定"} / {p.site_name || "現場未設定"}</div>
+                        <div style={{ fontSize: 10, color: C.sub }}>{new Date(p.created_at).toLocaleString("ja-JP")}</div>
+                      </button>
+                      {confirmDeleteId === p.id ? (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                          <button onClick={() => handleDeleteProject(p.id)} style={{ flex: 1, padding: "0 8px", borderRadius: 8, border: 0, background: C.red, color: "#fff", fontWeight: 700, fontSize: 10 }}>削除する</button>
+                          <button onClick={() => setConfirmDeleteId(null)} style={{ flex: 1, padding: "0 8px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", color: C.sub, fontSize: 10 }}>取消</button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setConfirmDeleteId(p.id)}
+                          style={{ flex: "0 0 auto", padding: "0 12px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", color: C.red, fontSize: 12 }}
+                        >
+                          削除
+                        </button>
+                      )}
+                    </div>
                   ))}
                 </div>
               )}
@@ -1027,6 +1077,39 @@ export default function AshiBaseSekisan() {
                   <TextField label="担当者" val={settings.tanto} set={(v) => setSettings({ ...settings, tanto: v })} />
                 </div>
                 <button onClick={() => { saveSettings(settings); setSettingsOpen(false); }} style={{ width: "100%", marginTop: 16, padding: "12px 0", borderRadius: 10, border: 0, background: C.ink, color: "#fff", fontWeight: 800 }}>保存して閉じる</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {saveModalOpen && (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 60, overflow: "auto", padding: 14 }}>
+            <div style={{ maxWidth: 460, margin: "40px auto 0" }}>
+              <div style={{ background: "#fff", borderRadius: 12, padding: 18 }}>
+                {saveConfirmed ? (
+                  <>
+                    <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 4, color: C.ink }}>保存しました</div>
+                    <div style={{ fontSize: 12, color: C.sub, marginBottom: 16 }}>
+                      {saveForm.clientName || "元請未設定"} / {saveForm.siteName || "現場未設定"}
+                    </div>
+                    <button onClick={() => setSaveModalOpen(false)} style={{ width: "100%", padding: "12px 0", borderRadius: 10, border: 0, background: C.ink, color: "#fff", fontWeight: 800 }}>閉じる</button>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 4 }}>この内容を保存</div>
+                    <div style={{ fontSize: 11, color: C.sub, marginBottom: 14 }}>元請名・現場名を入力してください</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      <TextField label="元請名" val={saveForm.clientName} set={(v) => setSaveForm({ ...saveForm, clientName: v })} ph="〇〇建設様" />
+                      <TextField label="現場名" val={saveForm.siteName} set={(v) => setSaveForm({ ...saveForm, siteName: v })} ph="〇〇邸" />
+                    </div>
+                    <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+                      <button onClick={() => setSaveModalOpen(false)} style={{ flex: "0 0 auto", padding: "12px 16px", borderRadius: 10, border: `1px solid ${C.line}`, background: "#fff", color: C.sub, fontWeight: 700 }}>キャンセル</button>
+                      <button onClick={submitSaveProject} disabled={saveSubmitting} style={{ flex: 1, padding: "12px 0", borderRadius: 10, border: 0, background: C.ink, color: "#fff", fontWeight: 800, opacity: saveSubmitting ? 0.6 : 1 }}>
+                        {saveSubmitting ? "保存中…" : "保存"}
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>
