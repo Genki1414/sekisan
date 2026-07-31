@@ -6,6 +6,30 @@ import { fetchCompanySettings, saveCompanySettings } from "./lib/profile";
 import { consumePdfCredit, peekPdfStatus } from "./lib/pdfCredits";
 import { startCheckout, openBillingPortal } from "./lib/billing";
 import { listProjects, saveProject, deleteProject } from "./lib/projects";
+import { resolveZaimuTarget, commitZaimuTarget } from "./lib/zaimu";
+
+const ZAIMU_APP_URL = import.meta.env.VITE_ZAIMU_APP_URL || "https://ashibase.jp";
+
+function zaimuErrorMessage(status, body) {
+  switch (body?.error) {
+    case "sekisan_plan_required":
+      return "資材管理への送信は積算の有料プラン契約者のみご利用いただけます。「見積書」セクションから月額500円／年額5,000円プランへご契約ください。";
+    case "not_linked":
+      return "AshiBase資材管理でログインしたことがありません。同じLINEアカウントで先に資材管理アプリへご登録・ログインしてください。";
+    case "company_blocked":
+      return "資材管理側のご契約状況により送信できません（利用停止・期限切れ等）。資材管理アプリでご確認ください。";
+    case "line_profile_missing":
+      return "LINEアカウント情報の取得に失敗しました。一度ログアウトし、再度LINEでログインしてください。";
+    case "zaimu_billing_required":
+      return "資材管理側が有料プランに未加入のため送信できません。資材管理アプリでプランへご契約ください。";
+    case "zaimu_unreachable":
+      return "資材管理アプリへ接続できませんでした。時間をおいて再度お試しください。";
+    case "invalid_material":
+      return "選択した資材が確認できませんでした。もう一度お試しください。";
+    default:
+      return `送信でエラーが発生しました（${body?.error || status || "unknown"}）`;
+  }
+}
 
 /* 足場積算（戸建・くさび式）— 平面割り付け図 + 高さ断面図（コマ・手摺・寸法）+ 全資材 */
 
@@ -309,6 +333,7 @@ export default function AshiBaseSekisan() {
   const [pdfView, setPdfView] = useState(false);
   const [msg, setMsg] = useState("");
   const [discount, setDiscount] = useState({ amount: "", unit: 0 });
+  const [zaimu, setZaimu] = useState({ open: false, step: "idle", loading: false, data: null, result: null, error: "", mapping: {} });
   useEffect(() => {
     if (!user) { setSettings({ jisha: "", jusho: "", tel: "", tanto: "" }); setSavedProjects([]); return; }
     (async () => {
@@ -746,6 +771,65 @@ export default function AshiBaseSekisan() {
     }
   };
 
+  const closeZaimuModal = () => setZaimu({ open: false, step: "idle", loading: false, data: null, result: null, error: "", mapping: {} });
+  const setZaimuMapping = (name, patch) =>
+    setZaimu((z) => ({ ...z, mapping: { ...z.mapping, [name]: { ...z.mapping[name], ...patch } } }));
+  const canSubmitZaimu = () => {
+    if (!zaimu.data || !zaimu.data.zaimuPaid) return false;
+    return zaimu.data.materials
+      .filter((m) => !m.matched)
+      .every((m) => {
+        const choice = zaimu.mapping[m.name];
+        if (!choice) return false;
+        return choice.action === "register_new" || (choice.action === "map_to_existing" && !!choice.materialId);
+      });
+  };
+  const openZaimuSend = async () => {
+    if (!user) { setMsg("資材管理への送信にはLINEログインが必要です"); startLineLogin(); return; }
+    if (!quote.atesaki.trim() || !quote.genba.trim()) {
+      setMsg("見積書欄の「宛先（お客様）＝元請名」と「現場名」を入力してください");
+      return;
+    }
+    const materials = R.materials.filter((m) => m.qty > 0).map((m) => ({ name: m.name, qty: m.qty }));
+    setZaimu({ open: true, step: "loading", loading: true, data: null, result: null, error: "", mapping: {} });
+    try {
+      const { ok, status, body } = await resolveZaimuTarget({ clientName: quote.atesaki, siteName: quote.genba, materials });
+      if (!ok) {
+        setZaimu((z) => ({ ...z, step: "error", loading: false, error: zaimuErrorMessage(status, body), errorCode: body?.error }));
+        return;
+      }
+      const mapping = {};
+      body.materials.filter((m) => !m.matched).forEach((m) => { mapping[m.name] = { action: "register_new", materialId: "" }; });
+      setZaimu({ open: true, step: "confirm", loading: false, data: body, result: null, error: "", mapping });
+    } catch (e) {
+      setZaimu((z) => ({ ...z, step: "error", loading: false, error: `送信の準備でエラーが発生しました: ${e.message || e}` }));
+    }
+  };
+  const submitZaimuSend = async () => {
+    const data = zaimu.data;
+    const materials = data.materials.map((m) => {
+      if (m.matched) return { name: m.name, qty: m.qty, action: "matched", materialId: m.materialId };
+      const choice = zaimu.mapping[m.name] || { action: "register_new" };
+      return {
+        name: m.name,
+        qty: m.qty,
+        action: choice.action,
+        materialId: choice.action === "map_to_existing" ? choice.materialId : undefined,
+      };
+    });
+    setZaimu((z) => ({ ...z, loading: true }));
+    try {
+      const { ok, status, body } = await commitZaimuTarget({ clientName: quote.atesaki, siteName: quote.genba, materials });
+      if (!ok) {
+        setZaimu((z) => ({ ...z, step: "error", loading: false, error: zaimuErrorMessage(status, body), errorCode: body?.error }));
+        return;
+      }
+      setZaimu((z) => ({ ...z, step: "result", loading: false, result: body }));
+    } catch (e) {
+      setZaimu((z) => ({ ...z, step: "error", loading: false, error: `送信でエラーが発生しました: ${e.message || e}` }));
+    }
+  };
+
   return (
     <div style={{ minHeight: "100%", background: C.bg, color: C.ink, fontFamily: "system-ui, -apple-system, sans-serif", padding: 14 }}>
       <style>{`@media print { body * { visibility: hidden; } .quote-sheet, .quote-sheet * { visibility: visible; } .quote-sheet { position: absolute; left: 0; top: 0; width: 100%; } .no-print { display: none !important; } }`}</style>
@@ -1043,8 +1127,8 @@ export default function AshiBaseSekisan() {
           )}
         </Section>
 
-        <button onClick={() => setMsg("AshiBase資材管理への接続は準備中です")} style={{ width: "100%", padding: "13px 0", borderRadius: 10, border: 0, background: C.ink, color: "#fff", fontWeight: 800, fontSize: 14 }}>
-          この部材を AshiBase で資材管理 <span style={{ fontWeight: 400, fontSize: 11, opacity: 0.7 }}>（接続準備中）</span>
+        <button onClick={openZaimuSend} style={{ width: "100%", padding: "13px 0", borderRadius: 10, border: 0, background: C.ink, color: "#fff", fontWeight: 800, fontSize: 14 }}>
+          この部材を AshiBase で資材管理
         </button>
         <div style={{ textAlign: "center", fontSize: 10, color: C.sub, marginTop: 8 }}>概算です。実施工は現調前提。</div>
         <div style={{ textAlign: "center", fontSize: 10, marginTop: 10 }}>
@@ -1148,6 +1232,118 @@ export default function AshiBaseSekisan() {
                         {saveSubmitting ? "保存中…" : "保存"}
                       </button>
                     </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {zaimu.open && (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 60, overflow: "auto", padding: 14 }}>
+            <div style={{ maxWidth: 480, margin: "40px auto 0" }}>
+              <div style={{ background: "#fff", borderRadius: 12, padding: 18 }}>
+                {zaimu.step === "loading" && (
+                  <div style={{ fontSize: 13, color: C.sub, textAlign: "center", padding: "20px 0" }}>資材管理側と照合しています…</div>
+                )}
+
+                {zaimu.step === "error" && (
+                  <>
+                    <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 10, color: C.red }}>送信できませんでした</div>
+                    <div style={{ fontSize: 12, color: C.ink, lineHeight: 1.6, marginBottom: 16 }}>{zaimu.error}</div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      {zaimu.errorCode === "zaimu_billing_required" && (
+                        <a href={`${ZAIMU_APP_URL}/?tab=billing`} target="_blank" rel="noreferrer"
+                          style={{ flex: 1, textAlign: "center", padding: "12px 0", borderRadius: 10, border: `1px solid ${C.line}`, background: "#fff", color: C.ink, fontWeight: 700, textDecoration: "none" }}>
+                          資材管理のプランを見る
+                        </a>
+                      )}
+                      <button onClick={closeZaimuModal} style={{ flex: 1, padding: "12px 0", borderRadius: 10, border: 0, background: C.ink, color: "#fff", fontWeight: 800 }}>閉じる</button>
+                    </div>
+                  </>
+                )}
+
+                {zaimu.step === "confirm" && zaimu.data && (
+                  <>
+                    <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 4 }}>AshiBase資材管理へ送信</div>
+                    <div style={{ fontSize: 11, color: C.sub, marginBottom: 14 }}>「{zaimu.data.companyName}」の内容を確認してください</div>
+
+                    {!zaimu.data.zaimuPaid && (
+                      <div style={{ background: "#faf1f1", border: "1px solid #e6a2a2", borderRadius: 8, padding: "10px 12px", marginBottom: 12, fontSize: 11, color: C.red }}>
+                        資材管理側が有料プランに未加入のため送信できません。
+                        <a href={`${ZAIMU_APP_URL}/?tab=billing`} target="_blank" rel="noreferrer" style={{ color: C.red, marginLeft: 4 }}>資材管理でプランへ契約する</a>
+                      </div>
+                    )}
+
+                    <div style={{ border: `1px solid ${C.line}`, borderRadius: 8, padding: 10, marginBottom: 10, fontSize: 12 }}>
+                      <div>元請：<b>{zaimu.data.client.name}</b>　{zaimu.data.client.matched ? <span style={{ color: C.sub }}>（既存に紐付け）</span> : <span style={{ color: C.amberInk }}>（新規登録）</span>}</div>
+                      <div>現場：<b>{zaimu.data.site.name}</b>　{zaimu.data.site.matched ? <span style={{ color: C.sub }}>（既存に紐付け）</span> : <span style={{ color: C.amberInk }}>（新規登録）</span>}</div>
+                    </div>
+
+                    <div style={{ maxHeight: 260, overflowY: "auto", border: `1px solid ${C.line}`, borderRadius: 8 }}>
+                      {zaimu.data.materials.map((m) => (
+                        <div key={m.name} style={{ padding: "8px 10px", borderBottom: `1px solid ${C.line}` }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+                            <span>{m.name}</span>
+                            <span style={{ fontFamily: mono }}>{m.qty}</span>
+                          </div>
+                          {m.matched ? (
+                            <div style={{ fontSize: 10, color: C.sub }}>資材管理の同名の資材に数量を反映します</div>
+                          ) : (
+                            <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 6 }}>
+                              <div style={{ fontSize: 10, color: C.red }}>資材管理に一致する資材がありません</div>
+                              <label style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 6 }}>
+                                <input type="radio" name={`zaimu-${m.name}`}
+                                  checked={zaimu.mapping[m.name]?.action !== "map_to_existing"}
+                                  onChange={() => setZaimuMapping(m.name, { action: "register_new", materialId: "" })} />
+                                新規資材として登録する
+                              </label>
+                              {zaimu.data.companyMaterials.length > 0 && (
+                                <label style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 6 }}>
+                                  <input type="radio" name={`zaimu-${m.name}`}
+                                    checked={zaimu.mapping[m.name]?.action === "map_to_existing"}
+                                    onChange={() => setZaimuMapping(m.name, { action: "map_to_existing" })} />
+                                  既存の資材に紐付ける
+                                </label>
+                              )}
+                              {zaimu.mapping[m.name]?.action === "map_to_existing" && (
+                                <select value={zaimu.mapping[m.name]?.materialId || ""} onChange={(e) => setZaimuMapping(m.name, { materialId: e.target.value })}
+                                  style={{ marginLeft: 20, padding: "6px 8px", borderRadius: 6, border: `1px solid ${C.line}`, fontSize: 11 }}>
+                                  <option value="">選択してください</option>
+                                  {zaimu.data.companyMaterials.map((cm) => (<option key={cm.id} value={cm.id}>{cm.name}</option>))}
+                                </select>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+                      <button onClick={closeZaimuModal} style={{ flex: "0 0 auto", padding: "12px 16px", borderRadius: 10, border: `1px solid ${C.line}`, background: "#fff", color: C.sub, fontWeight: 700 }}>キャンセル</button>
+                      <button onClick={submitZaimuSend} disabled={!canSubmitZaimu() || zaimu.loading}
+                        style={{ flex: 1, padding: "12px 0", borderRadius: 10, border: 0, background: C.ink, color: "#fff", fontWeight: 800, opacity: (!canSubmitZaimu() || zaimu.loading) ? 0.5 : 1 }}>
+                        {zaimu.loading ? "送信中…" : "送信する"}
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {zaimu.step === "result" && zaimu.result && (
+                  <>
+                    <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 10, color: C.ink }}>送信しました</div>
+                    <div style={{ fontSize: 12, color: C.sub, marginBottom: 10 }}>
+                      元請「{zaimu.result.client.name}」{zaimu.result.client.created ? "を新規登録" : "に紐付け"} / 現場「{zaimu.result.site.name}」{zaimu.result.site.created ? "を新規登録" : "に紐付け"}
+                    </div>
+                    <div style={{ border: `1px solid ${C.line}`, borderRadius: 8, padding: 10, marginBottom: 16, maxHeight: 220, overflowY: "auto" }}>
+                      {zaimu.result.materials.map((m) => (
+                        <div key={m.materialId} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "4px 0" }}>
+                          <span>{m.name}{m.created ? <span style={{ color: C.amberInk, fontSize: 10, marginLeft: 6 }}>新規登録</span> : null}</span>
+                          <span style={{ fontFamily: mono }}>{m.qty}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <button onClick={closeZaimuModal} style={{ width: "100%", padding: "12px 0", borderRadius: 10, border: 0, background: C.ink, color: "#fff", fontWeight: 800 }}>閉じる</button>
                   </>
                 )}
               </div>
